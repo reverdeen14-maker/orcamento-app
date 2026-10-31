@@ -83,8 +83,11 @@
     const env = m.envelopes.map((e) => {
       const uso = e.limite ? e.gasto / e.limite : 0;
       const cls = uso > 1 ? 'estouro' : uso >= 0.85 ? 'alerta' : '';
-      return '<div class="env"><div class="lin"><span>' + esc(e.nome) + '</span><span class="cinza">' + brl(e.gasto) + ' de ' + brl(e.limite) + '</span></div>'
-        + '<div class="trilho"><div class="barra ' + cls + '" style="width:' + Math.min(100, Math.round(uso * 100)) + '%"></div></div></div>';
+      const resta = e.limite - e.gasto;
+      const disp = resta < 0 ? '<b class="vermelho">' + rs(-resta) + ' acima</b>' : '<b class="' + (cls ? 'laranja' : 'verde') + '">' + rs(resta) + ' disponível</b>';
+      return '<div class="env"><div class="lin"><span>' + esc(e.nome) + '</span>' + disp + '</div>'
+        + '<div class="trilho"><div class="barra ' + cls + '" style="width:' + Math.min(100, Math.round(uso * 100)) + '%"></div></div>'
+        + '<span class="cinza pp">Gastou ' + brl(e.gasto) + ' de ' + brl(e.limite) + '</span></div>';
     }).join('');
     const restam = m.envelopes.reduce((t, e) => t + e.restante, 0);
     return cabecalho(nomeMes(m.mesRef), 'Mês de referência',
