@@ -3,8 +3,8 @@
 const Dados = (() => {
   const GRAPH = 'https://graph.microsoft.com/v1.0';
   const cfg = window.APP_CONFIG;
-  const RANGES = ['Painel!N2', 'Painel!B5:N23', 'Compromissos!B4:M5', 'Compromissos!B9:I80', 'Compromissos!K9:P40',
-    'Compromissos!R8:S13', 'Orçamento!B6:P34', 'Orçamento!B37:P186'];
+  const RANGES = ['Painel!N2', 'Painel!B5:N25', 'Compromissos!B4:M5', 'Compromissos!B9:I80', 'Compromissos!K9:P40',
+    'Compromissos!R8:S13', 'Orçamento!B6:P34', 'Orçamento!B37:P187'];
   const TABELAS = ['tbFluxo', 'tbCartao', 'tbContas', 'tbAvulsos', 'tbAjustes', 'tbCategorias', 'tbCartoes', 'tbEnvelopes', 'tbTipos'];
 
   let cliente = null, conta = null, sessao = null, itemId = null, raw = null, modo = 'demo';
@@ -185,11 +185,13 @@ const Dados = (() => {
 
   function montarModelo(r) {
     const R = r.ranges;
-    const P = R['Painel!B5:N23'];
+    const P = R['Painel!B5:N25'];
     const C = R['Compromissos!B4:M5'][1];
     const mesRef = R['Painel!N2'][0][0];
     const envelopes = [];
     for (let k = 11; k < P.length && P[k][0] && P[k][0] !== 'Total'; k++) {
+      // Envelope sem limite e sem gasto no mês (ex.: Aniversário Miguel fora de nov/dez) não aparece.
+      if (!num(P[k][1]) && !num(P[k][2])) continue;
       envelopes.push({ nome: P[k][0], limite: num(P[k][1]), gasto: num(P[k][2]), restante: num(P[k][3]), uso: num(P[k][4]) });
     }
     const pagar = R['Compromissos!B9:I80'].filter((x) => x[1] !== '' && typeof x[5] === 'number')
@@ -201,7 +203,7 @@ const Dados = (() => {
     const linhaO = (row) => O[row - 6].slice(3, 15).map(num);
     const nomesGrupos = ['Habitação', 'Renegociação Dívidas', 'Saúde', 'Transporte', 'Despesas Pessoais', 'Miguel', 'Lazer', 'Outros',
       'Despesas Temporárias / Variáveis'];
-    const grupos = R['Orçamento!B37:P186'].filter((x) => nomesGrupos.includes(x[0]))
+    const grupos = R['Orçamento!B37:P187'].filter((x) => nomesGrupos.includes(x[0]))
       .map((x) => ({ nome: x[0] === 'Despesas Temporárias / Variáveis' ? 'Variáveis' : x[0], valores: x.slice(3, 15).map(num) }));
 
     return {
