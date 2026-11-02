@@ -5,7 +5,8 @@ const Dados = (() => {
   const cfg = window.APP_CONFIG;
   const RANGES = ['Painel!N2', 'Painel!B5:N25', 'Compromissos!B4:M5', 'Compromissos!B9:I80', 'Compromissos!K9:P40',
     'Compromissos!R8:S13', 'Orçamento!B6:P34', 'Orçamento!B37:P187'];
-  const TABELAS = ['tbFluxo', 'tbCartao', 'tbContas', 'tbAvulsos', 'tbAjustes', 'tbCategorias', 'tbCartoes', 'tbEnvelopes', 'tbTipos'];
+  const TABELAS = ['tbFluxo', 'tbCartao', 'tbContas', 'tbAvulsos', 'tbAjustes', 'tbCategorias', 'tbCartoes', 'tbEnvelopes', 'tbTipos',
+    'tbContasBanco', 'tbMovContas'];
 
   let cliente = null, conta = null, sessao = null, itemId = null, raw = null, modo = 'demo';
   const calcCache = {};
@@ -222,7 +223,8 @@ const Dados = (() => {
         sobra: linhaO(26), liquido: linhaO(27), taxa: linhaO(33), grupos },
       fluxo: tabela(r, 'tbFluxo'), compras: tabela(r, 'tbCartao'), contas: tabela(r, 'tbContas'), avulsos: tabela(r, 'tbAvulsos'),
       ajustes: tabela(r, 'tbAjustes'), categorias: tabela(r, 'tbCategorias'), cartoes: tabela(r, 'tbCartoes'),
-      envelopesCfg: tabela(r, 'tbEnvelopes'), tipos: tabela(r, 'tbTipos').map((t) => t['Tipo de lançamento'])
+      envelopesCfg: tabela(r, 'tbEnvelopes'), tipos: tabela(r, 'tbTipos').map((t) => t['Tipo de lançamento']),
+      contasBanco: tabela(r, 'tbContasBanco'), movContas: tabela(r, 'tbMovContas')
     };
   }
 

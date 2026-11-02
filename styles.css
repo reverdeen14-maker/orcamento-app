@@ -142,3 +142,32 @@ button { cursor: pointer; }
 .login p { margin: 0; color: var(--cinza); }
 .login img { border-radius: 22px; }
 @media (prefers-reduced-motion: reduce) { .giro { animation: none; } }
+
+/* contas nos bancos e cofrinhos */
+.folha { max-height: 88vh; overflow-y: auto; }
+.bancos { display: flex; gap: 10px; overflow-x: auto; margin: 0 -14px; padding: 2px 14px 6px; scroll-snap-type: x mandatory; }
+.bancos::-webkit-scrollbar { display: none; }
+.banco { flex: 0 0 152px; scroll-snap-align: start; border: 0; border-radius: 16px; padding: 12px; min-height: 118px; text-align: left; display: flex; flex-direction: column; gap: 3px;
+  background: linear-gradient(140deg, var(--c1), var(--c2)); color: var(--tx); box-shadow: 0 4px 12px rgba(0,0,0,.12); position: relative; overflow: hidden; }
+.banco::after { content: ''; position: absolute; right: -24px; top: -24px; width: 86px; height: 86px; border-radius: 50%; background: rgba(255,255,255,.16); }
+.banco .selo, .conta-cab .selo { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; font-size: 13px; font-weight: 800; background: rgba(255,255,255,.25); margin-bottom: 6px; }
+.banco .nome { font-size: 13px; font-weight: 600; opacity: .92; }
+.banco .saldo { font-size: 18px; font-weight: 800; letter-spacing: -.3px; }
+.banco .leg { font-size: 11px; opacity: .85; }
+.mp-tag { display: inline-grid; place-items: center; width: 26px; height: 22px; border-radius: 7px; background: #00B1EA; color: #fff; font-size: 11px; font-weight: 800; vertical-align: 2px; margin-right: 2px; }
+.cofres-mp { background: linear-gradient(180deg, #E6F7FD 0, #fff 90px); }
+.cofres { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cofre { border: 1px solid #D5EEF8; background: #fff; border-radius: 14px; padding: 10px 12px; text-align: left; display: flex; flex-direction: column; gap: 2px; position: relative; border-top: 4px solid var(--k); }
+.cofre .porco { position: absolute; right: 8px; top: 8px; opacity: .9; }
+.cofre .nome { font-size: 13px; font-weight: 700; color: #1C1C1E; padding-right: 36px; }
+.cofre b { font-size: 17px; color: #0A3D62; }
+.cofre .leg { font-size: 11px; color: var(--cinza); }
+.conta-cab { display: flex; gap: 12px; align-items: center; border-radius: 16px; padding: 14px; margin-bottom: 8px; background: linear-gradient(140deg, var(--c1), var(--c2)); color: var(--tx); }
+.conta-cab div { display: flex; flex-direction: column; }
+.conta-cab .nome { font-size: 13px; opacity: .9; }
+.conta-cab b { font-size: 24px; font-weight: 800; }
+.conta-cab .leg { font-size: 11px; opacity: .85; }
+.conta-cab .selo { margin: 0; width: 42px; height: 42px; font-size: 16px; }
+.ext-tit { margin: 10px 0 0; font-size: 15px; }
+.extrato .item { font-size: 14px; padding: 8px 0; }
+.tag-fluxo { font-size: 10px; font-weight: 700; color: var(--azul); background: #E8EEFC; border-radius: 6px; padding: 1px 5px; vertical-align: 1px; }
