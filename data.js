@@ -70,6 +70,12 @@ const Dados = (() => {
     }
     sessao = (await api('POST', wb() + '/createSession', { persistChanges: true })).id;
   }
+  // Solta a planilha no Excel Online logo depois de ler; sessão aberta deixa o Excel do PC em "somente leitura".
+  async function fecharSessao() {
+    if (!sessao) return;
+    try { await api('POST', wb() + '/closeSession', {}); } catch (e) { /* já expirou */ }
+    sessao = null;
+  }
 
   async function lerRange(endereco) {
     const [s, a] = endereco.split('!');
@@ -101,8 +107,13 @@ const Dados = (() => {
       return montarModelo(raw);
     }
     if (!sessao) await abrirSessao();
-    const rs = await emLotes(RANGES, lerRange);
-    const ts = await emLotes(TABELAS, lerTabela);
+    let rs, ts;
+    try {
+      rs = await emLotes(RANGES, lerRange);
+      ts = await emLotes(TABELAS, lerTabela);
+    } finally {
+      await fecharSessao();
+    }
     raw = { ranges: {}, tables: {} };
     RANGES.forEach((a, i) => { raw.ranges[a] = rs[i]; });
     TABELAS.forEach((t, i) => { raw.tables[t] = ts[i]; });

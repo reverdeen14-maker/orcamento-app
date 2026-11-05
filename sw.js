@@ -1,6 +1,6 @@
 // Guarda as telas do app no iPhone para abrir rápido e sem internet.
 // Os dados da planilha nunca ficam aqui: vêm sempre do OneDrive.
-const VERSAO = 'orcamento-v5';
+const VERSAO = 'orcamento-v6';
 const ARQUIVOS = ['./', 'index.html', 'styles.css', 'config.js', 'data.js', 'app.js', 'manifest.webmanifest',
   'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 
