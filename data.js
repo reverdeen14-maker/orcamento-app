@@ -96,6 +96,32 @@ const Dados = (() => {
     return out;
   }
 
+  // ---------- correção única da planilha (06/11/2026) ----------
+  // Compromissos!O9 (coluna Recebido do "A receber") somava pela CATEGORIA: duas receitas com a mesma categoria
+  // (Salário Bianca e Complemento Bianca) contavam o mesmo dinheiro. A fórmula nova confere pelo NOME quando há
+  // mais de uma receita da mesma categoria. Só troca se encontrar exatamente a fórmula antiga; roda uma vez por ano/aparelho.
+  const O9_NOVA = '=LET(n,INDEX(K9#,,2),c,INDEX(K9#,,3),'
+    + 'nc,MMULT(--(c=TRANSPOSE(c)),SEQUENCE(ROWS(c),1,1,0)),'
+    + 'pn,SUMIFS(tbFluxo[Valor],tbFluxo[Descrição],n,tbFluxo[Mês],MesRef)'
+    + '+SUMIFS(tbFluxo[Valor],tbFluxo[Compromisso],n,tbFluxo[Descrição],"<>"&n,tbFluxo[Mês],MesRef),'
+    + 'pc,SUMIFS(tbFluxo[Valor],tbFluxo[Categoria final],c,tbFluxo[Mês],MesRef,tbFluxo[Tipo],"Entrada"),'
+    + 'IF((c="Diárias")+(c="Reembolso de terceiros")+(nc>1),pn,pc))';
+  async function migrarRecebido() {
+    const chave = 'migO9-' + planilha().ano;
+    if (localStorage.getItem(chave)) return;
+    const end = folha('Compromissos') + "/range(address='O9')";
+    const f = String((await api('GET', wb() + end + '?$select=formulas')).formulas[0][0] || '');
+    const antiga = /LET\(/i.test(f) && f.includes('tbFluxo[Categoria final]') && !/MMULT/i.test(f);
+    if (antiga) {
+      await api('PATCH', wb() + end, { formulas: [[O9_NOVA]] });
+      // confere: se a fórmula nova não "espalhar" certo (erro ou sem valores), volta a antiga na hora
+      const v = (await api('GET', wb() + folha('Compromissos') + "/range(address='O9:O12')?$select=values")).values.map((l) => l[0]);
+      const ruim = v.some((x) => typeof x === 'string' && x.startsWith('#')) || typeof v[0] !== 'number';
+      if (ruim) { await api('PATCH', wb() + end, { formulas: [[f]] }); localStorage.setItem(chave, 'falhou'); return; }
+    }
+    localStorage.setItem(chave, antiga ? 'corrigida' : 'ok');
+  }
+
   // ---------- carregar tudo ----------
   async function carregar() {
     if (modo === 'demo') {
@@ -109,6 +135,7 @@ const Dados = (() => {
     if (!sessao) await abrirSessao();
     let rs, ts;
     try {
+      try { await migrarRecebido(); } catch (e) { /* não impede a leitura */ }
       rs = await emLotes(RANGES, lerRange);
       ts = await emLotes(TABELAS, lerTabela);
     } finally {

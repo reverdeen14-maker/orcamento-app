@@ -234,3 +234,6 @@ button { cursor: pointer; }
   .ab-frases span { animation: none !important; }
   .ab-frases span:first-child { opacity: 1; }
 }
+
+/* As caixas da tela nunca encolhem: a tela é que rola (antes a aba Mais cortava o conteúdo das seções). */
+.rolagem > * { flex-shrink: 0; }
