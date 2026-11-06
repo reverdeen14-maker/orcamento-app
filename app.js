@@ -542,6 +542,12 @@
     } else if (f.tipo === 'desfazer') {
       corpo = '<h2>Desfazer ' + esc(f.item.desc) + '?</h2><p class="dica">Apaga do Fluxo o lançamento de ' + rs(f.linha.Valor) + ' em ' + dm(f.linha.Data) + '.</p>'
         + '<div class="botoes"><button class="btn perigo" data-a="confirmarDesfazer">Apagar lançamento</button><button class="btn sec" data-a="fechar">Cancelar</button></div>';
+    } else if (f.tipo === 'escolherDesfazer') {
+      corpo = '<h2>Desfazer ' + esc(f.item.desc) + '</h2><p class="dica">Não há lançamento com esse nome no Fluxo. Estes são os lançamentos do mês na categoria '
+        + esc(f.item.categoria) + '. Toque no que deve ser apagado:</p>'
+        + '<div class="lista">' + f.cands.map((x, k) => '<div class="item"><button class="linha-edit" data-a="escolherLinha" data-i="' + k + '"><span class="cinza pp larg">' + dm(x.Data) + '</span>'
+          + '<span class="cresce">' + esc(x['Descrição']) + '</span><b>' + brl(x.Valor) + '</b><span class="seta" aria-hidden="true">›</span></button></div>').join('') + '</div>'
+        + '<div class="botoes"><button class="btn sec" data-a="fechar">Cancelar</button></div>';
     } else if (f.tipo === 'conta') {
       corpo = folhaConta(f);
     } else if (f.tipo === 'editConta') {
@@ -660,10 +666,16 @@
   }
   function abrirFolha(tipo, item) {
     const mesmoMes = (s) => s === st.m.mesRef;
-    if (item.status === 'Pago' || item.status === 'Recebido') {
-      const l = st.m.fluxo.filter((x) => mesmoMes(x['Mês']) && (x.Compromisso === item.desc || x['Descrição'] === item.desc)).pop();
-      if (!l) { avisar('Esse pagamento está no Fluxo com outro nome. Desfaça pela planilha.'); return; }
-      st.folha = { tipo: 'desfazer', item, linha: l };
+    if (item.status === 'Pago' || item.status === 'Recebido' || item.status === 'Parcial') {
+      const doMes = st.m.fluxo.filter((x) => mesmoMes(x['Mês']));
+      const l = doMes.filter((x) => x.Compromisso === item.desc || x['Descrição'] === item.desc).pop();
+      if (l) st.folha = { tipo: 'desfazer', item, linha: l };
+      else {
+        // lançado com outro nome: mostra os lançamentos do mês da mesma categoria para escolher qual apagar
+        const cands = doMes.filter((x) => item.categoria && x['Categoria final'] === item.categoria && (tipo !== 'receber' || x.Tipo === 'Entrada'));
+        if (!cands.length) { avisar('Não achei no Fluxo deste mês um lançamento de ' + item.desc + '. Desfaça pela planilha.'); return; }
+        st.folha = { tipo: 'escolherDesfazer', item, cands };
+      }
     } else {
       const venc = typeof (item.venc || item.data) === 'number' ? Dados.deSerie(item.venc || item.data) : hoje;
       const d = venc > hoje ? hoje : venc;
@@ -697,6 +709,7 @@
       gravar(() => Dados.adicionar('tbFluxo', linha), (f.tipo === 'pagar' ? 'Pago: ' : 'Recebido: ') + it.desc,
         () => { it.status = f.tipo === 'pagar' ? 'Pago' : 'Recebido'; });
     },
+    escolherLinha: (d) => { const f = st.folha; st.folha = { tipo: 'desfazer', item: f.item, linha: f.cands[Number(d.i)] }; desenhar(); },
     confirmarDesfazer: () => {
       const f = st.folha; st.folha = null;
       gravar(() => Dados.apagar('tbFluxo', f.linha._i), 'Lançamento apagado.', () => { f.item.status = f.item.recebido !== undefined ? 'A receber' : 'Pendente'; });
