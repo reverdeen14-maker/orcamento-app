@@ -11,7 +11,8 @@
     lanc: { forma: 'cartao', tipo: 'Saída', valor: '', desc: '', data: isoHoje, cat: '', cartao: '', parcelas: 1, mensal: false, comp: '' },
     aj: { mes: isoHoje.slice(0, 7), conta: '', valor: '', obs: '' },
     av: { tipo: 'Despesa', venc: isoHoje, desc: '', cat: '', valor: '' },
-    of: { servidor: localStorage.getItem('ofServidor') || '', itens: [], buscando: false }
+    of: { servidor: localStorage.getItem('ofServidor') || '', itens: [], buscando: false },
+    fx: { tipo: 'Todas', ativas: false }, avTodos: false, envMes: null, envv: {}, abertura: true
   };
   const $app = document.getElementById('app');
 
@@ -58,7 +59,8 @@
     try {
       await fn();
       if (Dados.modo === 'demo') {
-        if (patchDemo) patchDemo();
+        // na demonstração a mudança fica só na memória do app (some ao fechar)
+        if (patchDemo) patchDemo(); else st.m = await Dados.carregar();
         st.carregando = false; avisar('Modo demonstração: nada foi gravado na planilha.');
         return true;
       }
@@ -391,10 +393,18 @@
       + (ab ? '<div class="secao-corpo">' + corpo + '</div>' : '') + '</div>';
   }
 
+  // limite digitado (ainda não salvo) diferente do que está na planilha?
+  function envAlterado(e, mes) {
+    const k = mes + '_' + e._i, col = ABREV[mes];
+    if (st.envv[k] === undefined) return false;
+    const atual = typeof e[col] === 'number' ? Math.round(e[col] * 100) / 100 : 0;
+    return Math.round(numBR(st.envv[k]) * 100) / 100 !== atual;
+  }
+  const isoDe = (s) => { if (typeof s !== 'number') return isoHoje; const d = Dados.deSerie(Math.floor(s)); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+
   function telaMais() {
     const m = st.m, pl = Dados.planilha();
     const mesRef = mesDaSerie(m.mesRef);
-    const col = ABREV[mesRef.mes];
     const cfg = window.APP_CONFIG;
     const planilhaCorpo = '<div class="lin"><span>Conta</span><b>' + esc(st.conta || (Dados.modo === 'demo' ? 'Modo demonstração' : 'Não conectada')) + '</b></div>'
       + '<div class="lin"><span>Ano</span><div class="chips">' + cfg.planilhas.map((p) => '<button class="chip ' + (p.ano === pl.ano ? 'on' : '') + '" data-a="ano" data-v="' + p.ano + '">' + p.ano + '</button>').join('') + '</div></div>'
@@ -402,26 +412,51 @@
       + '<div class="botoes">' + (Dados.modo === 'onedrive' ? '<button class="btn" data-a="atualizar">Atualizar agora</button><button class="btn sec" data-a="sair">Sair da conta</button>'
         : cfg.clientId ? '<button class="btn" data-a="entrar">Entrar com a conta Microsoft</button>' : '<p class="dica">Para ligar ao OneDrive, siga o LEIAME.md (registrar o app na Microsoft e colar o ID em config.js).</p>')
       + (cfg.clientId ? '<button class="btn sec" data-a="demo">' + (Dados.modo === 'demo' ? 'Sair da demonstração' : 'Ver demonstração') + '</button>' : '') + '</div>';
-    const contas = '<p class="dica">Toque em Ativo para ligar ou desligar uma conta.</p>' + m.contas.map((c) => '<div class="item"><div class="cresce col"><span>' + esc(c['Descrição']) + '</span><span class="cinza pp">' + esc(c.Tipo) + ' · dia ' + esc(c.Dia) + ' · ' + esc(c['Situação no mês'] || '') + '</span></div><b>' + brl(c.Valor) + '</b>'
-      + '<button class="chip ' + (c.Ativo === 'Sim' ? 'on' : '') + '" data-a="ativo" data-i="' + c._i + '" data-v="' + (c.Ativo === 'Sim' ? 'Não' : 'Sim') + '">' + (c.Ativo === 'Sim' ? 'Ativo' : 'Inativo') + '</button></div>').join('');
+    const fx = st.fx;
+    const listaContas = m.contas.filter((c) => (fx.tipo === 'Todas' || c.Tipo === fx.tipo) && (fx.ativas ? c.Ativo !== 'Não' : true));
+    const contas = '<p class="dica">Toque numa conta para mudar valor, dia, credor ou observação. O botão da direita liga e desliga a conta.</p>'
+      + '<div class="chips">' + ['Todas', 'Despesa', 'Receita', 'Aplicação'].map((t) => '<button class="chip ' + (fx.tipo === t ? 'on' : '') + '" data-a="fxTipo" data-v="' + t + '">' + t + '</button>').join('')
+      + '<button class="chip ' + (fx.ativas ? 'on' : '') + '" data-a="fxAtivas">Só ativas</button></div>'
+      + '<div class="lista-edit">' + listaContas.map((c) => '<div class="item"><button class="linha-edit" data-a="editConta" data-i="' + c._i + '"><span class="cresce col"><span>' + esc(c['Descrição']) + '</span><span class="cinza pp">' + esc(c.Tipo) + ' · dia ' + esc(c.Dia) + (c['Situação no mês'] ? ' · ' + esc(c['Situação no mês']) : '') + '</span></span><b>' + brl(c.Valor) + '</b><span class="seta" aria-hidden="true">›</span></button>'
+      + '<button class="chip ' + (c.Ativo === 'Não' ? '' : 'on') + '" data-a="ativo" data-i="' + c._i + '" data-v="' + (c.Ativo === 'Não' ? 'Sim' : 'Não') + '">' + (c.Ativo === 'Não' ? 'Inativo' : 'Ativo') + '</button></div>').join('')
+      + (listaContas.length ? '' : '<p class="dica">Nenhuma conta neste filtro.</p>') + '</div>';
     const aj = st.aj;
-    const valores = m.ajustes.filter((a) => a.Conta).map((a) => '<div class="item"><span class="cresce">' + esc(a.Conta) + '</span><span class="cinza pp">' + (typeof a['Mês'] === 'number' ? MESES[mesDaSerie(a['Mês']).mes] + '/' + String(mesDaSerie(a['Mês']).ano).slice(2) : '') + '</span><b>' + brl(a.Valor) + '</b></div>').join('')
+    const mesAno = (s) => (typeof s === 'number' ? MESES[mesDaSerie(s).mes] + '/' + String(mesDaSerie(s).ano).slice(2) : '');
+    const valores = '<p class="dica">Toque num valor para corrigir ou apagar.</p>' + m.ajustes.filter((a) => a.Conta).map((a) => '<div class="item"><button class="linha-edit" data-a="editAjuste" data-i="' + a._i + '"><span class="cresce col"><span>' + esc(a.Conta) + '</span><span class="cinza pp">' + mesAno(a['Mês']) + (a['Observação'] ? ' · ' + esc(a['Observação']) : '') + '</span></span><b>' + brl(a.Valor) + '</b><span class="seta" aria-hidden="true">›</span></button></div>').join('')
+      + '<h3 class="sub-tit">Novo valor do mês</h3>'
       + '<div class="mini-form"><label class="campo"><span class="cinza">Mês</span><input type="month" data-c="aj.mes" value="' + esc(aj.mes) + '"></label>'
       + '<label class="campo"><span class="cinza">Conta</span><select data-c="aj.conta"><option value="">Escolha…</option>' + m.contas.map((c) => '<option' + (c['Descrição'] === aj.conta ? ' selected' : '') + '>' + esc(c['Descrição']) + '</option>').join('') + '</select></label>'
       + '<label class="campo"><span class="cinza">Valor</span><input inputmode="decimal" data-c="aj.valor" value="' + esc(aj.valor) + '" placeholder="0,00"></label>'
       + '<label class="campo"><span class="cinza">Observação</span><input data-c="aj.obs" value="' + esc(aj.obs) + '"></label>'
       + '<button class="btn" data-a="salvarAjuste">Adicionar valor do mês</button></div>';
     const av = st.av;
-    const avulsos = m.avulsos.filter((a) => typeof a['Mês'] === 'number' && a['Mês'] >= m.mesRef).map((a) => '<div class="item"><span class="cinza pp larg">' + dm(a.Vencimento) + '</span><span class="cresce">' + esc(a['Descrição']) + '</span><b>' + brl(a.Valor) + '</b></div>').join('')
+    const listaAv = m.avulsos.filter((a) => a['Descrição'] && (st.avTodos || (typeof a['Mês'] === 'number' && a['Mês'] >= m.mesRef)));
+    const avulsos = '<p class="dica">Toque num gasto para corrigir ou apagar.</p>'
+      + '<div class="chips"><button class="chip ' + (st.avTodos ? '' : 'on') + '" data-a="avTodos" data-v="0">Deste mês em diante</button><button class="chip ' + (st.avTodos ? 'on' : '') + '" data-a="avTodos" data-v="1">Todos</button></div>'
+      + listaAv.map((a) => '<div class="item"><button class="linha-edit" data-a="editAvulso" data-i="' + a._i + '"><span class="cinza pp larg">' + dm(a.Vencimento) + '</span><span class="cresce col"><span>' + esc(a['Descrição']) + '</span><span class="cinza pp">' + esc(a.Tipo) + ' · ' + esc(a.Categoria) + '</span></span><b class="' + (a.Tipo === 'Receita' ? 'verde' : '') + '">' + brl(a.Valor) + '</b><span class="seta" aria-hidden="true">›</span></button></div>').join('')
+      + (listaAv.length ? '' : '<p class="dica">Nenhum gasto avulso aqui.</p>')
+      + '<h3 class="sub-tit">Novo gasto avulso</h3>'
       + '<div class="mini-form"><div class="chips">' + ['Despesa', 'Receita'].map((t) => '<button class="chip ' + (t === av.tipo ? 'on' : '') + '" data-a="avtipo" data-v="' + t + '">' + t + '</button>').join('') + '</div>'
       + '<label class="campo"><span class="cinza">Vencimento</span><input type="date" data-c="av.venc" value="' + esc(av.venc) + '"></label>'
       + '<label class="campo"><span class="cinza">Descrição</span><input data-c="av.desc" value="' + esc(av.desc) + '"></label>'
       + '<label class="campo"><span class="cinza">Categoria</span><select data-c="av.cat">' + opcoesCategorias(av.cat) + '</select></label>'
       + '<label class="campo"><span class="cinza">Valor</span><input inputmode="decimal" data-c="av.valor" value="' + esc(av.valor) + '" placeholder="0,00"></label>'
       + '<button class="btn" data-a="salvarAvulso">Adicionar gasto avulso</button></div>';
-    const envs = '<p class="dica">Limites de ' + MESES[mesRef.mes] + '. Mude o valor e toque em Salvar.</p>' + m.envelopesCfg.map((e) => '<div class="item"><span class="cresce">' + esc(e.Envelope) + '</span>'
-      + '<input class="num" inputmode="decimal" id="env-' + e._i + '" value="' + (typeof e[col] === 'number' ? brl(e[col]) : '') + '" aria-label="Limite de ' + esc(e.Envelope) + '">'
-      + '<button class="chip" data-a="salvarEnv" data-i="' + e._i + '" data-v="' + col + '">Salvar</button></div>').join('');
+    if (st.envMes == null) st.envMes = mesRef.mes;
+    const ce = ABREV[st.envMes];
+    const envMudou = (e) => envAlterado(e, st.envMes);
+    const nMud = m.envelopesCfg.filter(envMudou).length;
+    const envs = '<div class="lin mes-nav"><button class="redondo peq" data-a="envMes" data-d="-1" aria-label="Mês anterior">‹</button><b>' + MESES[st.envMes][0].toUpperCase() + MESES[st.envMes].slice(1) + '</b>'
+      + '<button class="redondo peq" data-a="envMes" data-d="1" aria-label="Próximo mês">›</button></div>'
+      + '<p class="dica">Mude os limites e toque em Salvar. Para passar dinheiro de um mês para outro, ajuste os dois meses.</p>'
+      + m.envelopesCfg.filter((e) => e.Envelope).map((e) => {
+        const k = st.envMes + '_' + e._i;
+        const v = st.envv[k] !== undefined ? st.envv[k] : (typeof e[ce] === 'number' ? brl(e[ce]) : '');
+        return '<div class="item"><span class="cresce">' + esc(e.Envelope) + '</span>'
+          + '<input class="num' + (envMudou(e) ? ' mudou' : '') + '" inputmode="decimal" placeholder="0,00" data-c="envv.' + k + '" value="' + esc(v) + '" aria-label="Limite de ' + esc(e.Envelope) + ' em ' + MESES[st.envMes] + '"></div>';
+      }).join('')
+      + '<div class="botoes"><button class="btn" data-a="salvarEnvs">' + (nMud ? 'Salvar ' + nMud + (nMud === 1 ? ' limite' : ' limites') : 'Salvar limites') + '</button>'
+      + (nMud ? '<button class="btn sec" data-a="descartarEnvs">Desfazer</button>' : '') + '</div>';
     const of = st.of;
     const ofCorpo = '<p class="dica">Importa as compras e os pagamentos do banco por Open Finance. Precisa de um servidor de conexão (veja LEIAME.md, parte 4). Enquanto não houver, nada é enviado a lugar nenhum.</p>'
       + '<label class="campo"><span class="cinza">Servidor</span><input data-c="of.servidor" value="' + esc(of.servidor) + '" placeholder="https://…"></label>'
@@ -436,7 +471,7 @@
       + secao('contas', 'CF', '#1D4ED8', 'Contas fixas e parcelas', 'Cadastro · geram os compromissos do mês', contas)
       + secao('valores', 'VM', '#B45309', 'Valores do mês', 'Quando uma conta muda só num mês', valores)
       + secao('avulsos', 'AV', '#6D28D9', 'Gastos avulsos', 'Aniversários, IPVA, revisões…', avulsos)
-      + secao('envelopes', 'EN', '#0F766E', 'Limites dos envelopes', 'Mês de ' + MESES[mesRef.mes], envs)
+      + secao('envelopes', 'EN', '#0F766E', 'Limites dos envelopes', 'Mês de ' + MESES[st.envMes], envs)
       + secao('openfinance', 'OF', '#45454A', 'Conexões bancárias', 'Open Finance (precisa de servidor)', ofCorpo)
       + secao('instalar', 'IN', '#B42318', 'Instalar no iPhone', 'Ícone na tela de início', instalar)
       + '</section>' + rodapeStatus();
@@ -464,6 +499,38 @@
         + '<div class="botoes"><button class="btn perigo" data-a="confirmarDesfazer">Apagar lançamento</button><button class="btn sec" data-a="fechar">Cancelar</button></div>';
     } else if (f.tipo === 'conta') {
       corpo = folhaConta(f);
+    } else if (f.tipo === 'editConta') {
+      const c = st.m.contas.find((x) => x._i === f.i) || {};
+      corpo = '<h2>' + esc(c['Descrição']) + '</h2><span class="cinza pp">' + esc(c.Tipo) + ' · ' + esc(c.Categoria) + (c.Parcelas ? ' · ' + esc(c.Parcelas) + ' parcelas' : ' · sem fim') + '</span>'
+        + '<label class="campo"><span class="cinza">Valor</span><input inputmode="decimal" data-c="folha.valor" value="' + esc(f.valor) + '" placeholder="0,00"></label>'
+        + '<label class="campo"><span class="cinza">Dia do vencimento</span><input inputmode="numeric" data-c="folha.dia" value="' + esc(f.dia) + '"></label>'
+        + '<label class="campo"><span class="cinza">Credor</span><input data-c="folha.credor" value="' + esc(f.credor) + '"></label>'
+        + '<div class="campo"><span class="cinza">Situação</span><div class="chips">' + ['Sim', 'Não'].map((v) => '<button class="chip ' + (f.ativo === v ? 'on' : '') + '" data-a="fAtivo" data-v="' + v + '">' + (v === 'Sim' ? 'Ativo' : 'Inativo') + '</button>').join('') + '</div></div>'
+        + '<label class="campo"><span class="cinza">Meses sem cobrança</span><input data-c="folha.sem" value="' + esc(f.sem) + '" placeholder="Ex.: 7,12"></label>'
+        + '<label class="campo"><span class="cinza">Observação</span><input data-c="folha.obs" value="' + esc(f.obs) + '"></label>'
+        + '<p class="dica">O valor novo vale para o mês atual e os próximos (os meses fechados não mudam). Se a conta muda só num mês, use <b>Valores do mês</b>.</p>'
+        + '<div class="botoes"><button class="btn" data-a="salvarEditConta">Salvar</button><button class="btn sec" data-a="fechar">Cancelar</button></div>';
+    } else if (f.tipo === 'editAjuste') {
+      corpo = '<h2>Valor do mês</h2>'
+        + '<label class="campo"><span class="cinza">Mês</span><input type="month" data-c="folha.mes" value="' + esc(f.mes) + '"></label>'
+        + '<label class="campo"><span class="cinza">Conta</span><select data-c="folha.conta">' + st.m.contas.map((c) => '<option' + (c['Descrição'] === f.conta ? ' selected' : '') + '>' + esc(c['Descrição']) + '</option>').join('') + '</select></label>'
+        + '<label class="campo"><span class="cinza">Valor</span><input inputmode="decimal" data-c="folha.valor" value="' + esc(f.valor) + '" placeholder="0,00"></label>'
+        + '<label class="campo"><span class="cinza">Observação</span><input data-c="folha.obs" value="' + esc(f.obs) + '"></label>'
+        + '<div class="botoes"><button class="btn" data-a="salvarEditAjuste">Salvar</button><button class="btn sec" data-a="fechar">Cancelar</button>'
+        + '<button class="btn perigo-sec" data-a="pedirLimpar" data-v="tbAjustes">Apagar</button></div>';
+    } else if (f.tipo === 'editAvulso') {
+      corpo = '<h2>Gasto avulso</h2>'
+        + '<div class="campo"><span class="cinza">Tipo</span><div class="chips">' + ['Despesa', 'Receita'].map((t) => '<button class="chip ' + (f.tipoAv === t ? 'on' : '') + '" data-a="fTipoAv" data-v="' + t + '">' + t + '</button>').join('') + '</div></div>'
+        + '<label class="campo"><span class="cinza">Vencimento</span><input type="date" data-c="folha.venc" value="' + esc(f.venc) + '"></label>'
+        + '<label class="campo"><span class="cinza">Descrição</span><input data-c="folha.desc" value="' + esc(f.desc) + '"></label>'
+        + '<label class="campo"><span class="cinza">Categoria</span><select data-c="folha.cat">' + opcoesCategorias(f.cat) + '</select></label>'
+        + '<label class="campo"><span class="cinza">Credor</span><input data-c="folha.credor" value="' + esc(f.credor) + '"></label>'
+        + '<label class="campo"><span class="cinza">Valor</span><input inputmode="decimal" data-c="folha.valor" value="' + esc(f.valor) + '" placeholder="0,00"></label>'
+        + '<div class="botoes"><button class="btn" data-a="salvarEditAvulso">Salvar</button><button class="btn sec" data-a="fechar">Cancelar</button>'
+        + '<button class="btn perigo-sec" data-a="pedirLimpar" data-v="tbAvulsos">Apagar</button></div>';
+    } else if (f.tipo === 'limpar') {
+      corpo = '<h2>Apagar ' + esc(f.nome) + '?</h2><p class="dica">A linha fica vazia na planilha (as fórmulas continuam lá). Dá para lançar de novo depois, se precisar.</p>'
+        + '<div class="botoes"><button class="btn perigo" data-a="confirmarLimpar">Apagar</button><button class="btn sec" data-a="fechar">Cancelar</button></div>';
     }
     return '<div class="fundo" data-a="fechar"></div><div class="folha" role="dialog" aria-modal="true">' + corpo + '</div>';
   }
@@ -475,21 +542,40 @@
       + '<button class="btn sec" data-a="demo">Ver demonstração</button></div>';
   }
 
+  // Abertura animada (a mesma de index.html, para não "piscar" na troca)
+  function telaAbertura(saindo) {
+    return '<div class="abertura' + (saindo ? ' sai' : '') + '" role="status" aria-label="Abrindo o Orçamento Família">'
+      + '<div class="ab-luz"></div>'
+      + '<div class="ab-cena"><span class="ab-brilho b1"></span><span class="ab-brilho b2"></span><span class="ab-brilho b3"></span>'
+      + '<div class="ab-moeda"><div class="ab-gira"><img src="icone-moeda.svg" alt="" width="132" height="132"></div></div><div class="ab-sombra"></div>'
+      + '<div class="ab-barras"><i></i><i></i><i></i><i></i></div></div>'
+      + '<h1 class="ab-tit">Orçamento <span>Família</span></h1>'
+      + '<div class="ab-frases"><span>Abrindo o cofre…</span><span>Somando receitas e despesas…</span><span>Conferindo os envelopes…</span><span>Quase pronto…</span></div>'
+      + '<div class="ab-prog"><i></i></div></div>';
+  }
+
   function desenhar() {
     const foco = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.c : null;
     let html;
     if (st.modo === 'login') html = telaLogin();
-    else if (!st.m) html = '<div class="login"><p>' + (st.erro ? esc(st.erro) : 'Lendo a planilha…') + '</p>' + (st.erro ? '<button class="btn" data-a="atualizar">Tentar de novo</button>' : '') + '</div>';
-    else {
+    else if (!st.m && st.erro && !st.carregando) html = '<div class="login"><img src="icon-192.png" alt="" width="88" height="88"><p>' + esc(st.erro) + '</p><button class="btn" data-a="atualizar">Tentar de novo</button></div>';
+    else if (!st.m || st.abertura === true) {
+      // abertura já na tela (inclusive a de index.html): não redesenha, senão a animação recomeça
+      if ($app.querySelector('.abertura:not(.sai)') && !st.aviso) return;
+      html = telaAbertura(false);
+    } else {
       const t = { inicio: telaInicio, contas: telaContas, lancar: telaLancar, cartoes: telaCartoes, orcamento: telaOrcamento, mais: telaMais }[st.aba]();
-      html = '<main class="rolagem">' + t + '</main>' + (st.aba === 'lancar' ? '' : navegacao()) + folha();
+      html = '<main class="rolagem' + (st.abertura === 'saindo' ? ' entra' : '') + '">' + t + '</main>' + (st.aba === 'lancar' ? '' : navegacao()) + folha();
     }
-    if (st.carregando && st.m) html += '<div class="carregando" role="status"><span class="giro"></span>Conversando com a planilha…</div>';
+    // na saída, a mesma abertura que estava na tela esmaece por cima das telas (sem recomeçar a animação)
+    const velha = st.abertura === 'saindo' ? $app.querySelector('.abertura') : null;
+    if (st.carregando && st.m && !st.abertura) html +='<div class="carregando" role="status"><span class="giro"></span>Conversando com a planilha…</div>';
     if (st.aviso) html += '<div class="aviso" role="status">' + esc(st.aviso) + '</div>';
     const rol = $app.querySelector('.rolagem');
     const topo = rol ? rol.scrollTop : 0;
     const mesmaAba = desenhar.ultima === st.aba;
     $app.innerHTML = html;
+    if (velha) { velha.classList.add('sai'); $app.appendChild(velha); }
     desenhar.ultima = st.aba;
     const nova = $app.querySelector('.rolagem');
     if (nova && mesmaAba) nova.scrollTop = topo;
@@ -503,13 +589,21 @@
     if (caminho[0] === 'of' && (caminho[1] === 'sel' || caminho[1] === 'cat')) {
       st.of.itens[Number(caminho[2])][caminho[1]] = v; return false;
     }
+    if (caminho[0] === 'envv') { st.envv[caminho[1]] = v; return false; }
+    if (!st[caminho[0]]) return false;
     st[caminho[0]][caminho[1]] = v;
     if (caminho.join('.') === 'of.servidor') { localStorage.setItem('ofServidor', v); return true; }
     if (caminho.join('.') === 'lanc.mensal') { if (v) st.lanc.parcelas = 1; return true; }
     return ['lanc.data', 'lanc.cat', 'lanc.valor'].includes(caminho.join('.'));
   }
   $app.addEventListener('input', (e) => { if (e.target.dataset.c && e.target.tagName === 'INPUT' && e.target.type !== 'checkbox' && e.target.type !== 'date') campo(e.target); });
-  $app.addEventListener('change', (e) => { if (e.target.dataset.c && campo(e.target)) desenhar(); });
+  // Campo de digitar: o "change" chega quando o teclado fecha, no mesmo toque do botão Salvar.
+  // Redesenhar na hora apagaria o botão antes do clique (o toque se perdia). Por isso espera um pouco.
+  const ehTexto = (el) => el.tagName === 'INPUT' && !['checkbox', 'date', 'month'].includes(el.type);
+  $app.addEventListener('change', (e) => {
+    if (!e.target.dataset.c || !campo(e.target)) return;
+    if (ehTexto(e.target)) { clearTimeout(desenhar.adiado); desenhar.adiado = setTimeout(desenhar, 400); } else desenhar();
+  });
 
   // ---------- ações ----------
   function lancamentoDe(item, tipo) {
@@ -605,15 +699,111 @@
     entrar: () => { Dados.usarDemo(false); Dados.entrar(); },
     sair: () => Dados.sair(),
     demo: () => { Dados.usarDemo(Dados.modo !== 'demo'); location.reload(); },
-    ativo: (d) => gravar(() => Dados.alterar('tbContas', Number(d.i), { Ativo: d.v }), 'Conta atualizada.',
-      () => { const c = st.m.contas.find((x) => x._i === Number(d.i)); if (c) c.Ativo = d.v; }),
+    ativo: (d) => gravar(() => Dados.alterar('tbContas', Number(d.i), { Ativo: d.v }), d.v === 'Sim' ? 'Conta ativada.' : 'Conta desativada.'),
     salvarAjuste: () => {
       const a = st.aj, valor = numBR(a.valor);
       if (!a.conta || !valor || !a.mes) { avisar('Preencha mês, conta e valor.'); return; }
       const [ano, mes] = a.mes.split('-').map(Number);
       gravar(() => Dados.adicionar('tbAjustes', { 'Mês': Dados.paraSerie(new Date(ano, mes - 1, 1)), Conta: a.conta, Valor: valor, 'Observação': a.obs }),
-        'Valor do mês salvo.', () => { st.m.ajustes.push({ Conta: a.conta, 'Mês': Dados.paraSerie(new Date(ano, mes - 1, 1)), Valor: valor }); })
-        .then(() => { st.aj = { ...st.aj, conta: '', valor: '', obs: '' }; desenhar(); });
+        'Valor do mês salvo.').then((ok) => { if (ok) st.aj = { ...st.aj, conta: '', valor: '', obs: '' }; desenhar(); });
+    },
+    // ----- aba Mais: filtros -----
+    fxTipo: (d) => { st.fx.tipo = d.v; desenhar(); },
+    fxAtivas: () => { st.fx.ativas = !st.fx.ativas; desenhar(); },
+    avTodos: (d) => { st.avTodos = d.v === '1'; desenhar(); },
+    // ----- contas fixas -----
+    editConta: (d) => {
+      const c = st.m.contas.find((x) => x._i === Number(d.i));
+      if (!c) return;
+      st.folha = { tipo: 'editConta', i: c._i, valor: typeof c.Valor === 'number' ? brl(c.Valor) : '', dia: c.Dia === '' ? '' : String(c.Dia),
+        credor: c.Credor || '', ativo: c.Ativo === 'Não' ? 'Não' : 'Sim', sem: c['Meses sem cobrança'] == null ? '' : String(c['Meses sem cobrança']), obs: c['Observação'] || '' };
+      desenhar();
+    },
+    fAtivo: (d) => { st.folha.ativo = d.v; desenhar(); },
+    salvarEditConta: () => {
+      const f = st.folha, c = st.m.contas.find((x) => x._i === f.i);
+      if (!c) return;
+      const mud = {};
+      const valor = numBR(f.valor);
+      if (String(f.valor).trim() === '') { avisar('Informe o valor.'); return; }
+      if (Math.round(valor * 100) !== Math.round((Number(c.Valor) || 0) * 100)) mud.Valor = valor;
+      const dia = Number(String(f.dia).trim());
+      if (!Number.isInteger(dia) || dia < 1 || dia > 31) { avisar('O dia precisa ser de 1 a 31.'); return; }
+      if (dia !== Number(c.Dia)) mud.Dia = dia;
+      if (f.credor.trim() !== String(c.Credor || '').trim()) mud.Credor = f.credor.trim();
+      if (f.ativo !== (c.Ativo === 'Não' ? 'Não' : 'Sim')) mud.Ativo = f.ativo;
+      const sem = String(f.sem).replace(/\s/g, '');
+      if (sem && !/^\d{1,2}(,\d{1,2})*$/.test(sem)) { avisar('Meses sem cobrança: números separados por vírgula, ex.: 7,12'); return; }
+      // vai como texto (com apóstrofo) para o Excel não ler "7,12" como número
+      if (sem !== String(c['Meses sem cobrança'] == null ? '' : c['Meses sem cobrança']).replace(/\s/g, '')) mud['Meses sem cobrança'] = sem && Dados.modo !== 'demo' ? "'" + sem : sem;
+      if (f.obs.trim() !== String(c['Observação'] || '').trim()) mud['Observação'] = f.obs.trim();
+      if (!Object.keys(mud).length) { st.folha = null; avisar('Nada mudou.'); return; }
+      st.folha = null;
+      gravar(() => Dados.alterar('tbContas', c._i, mud), c['Descrição'] + ' atualizada.');
+    },
+    // ----- valores do mês -----
+    editAjuste: (d) => {
+      const a = st.m.ajustes.find((x) => x._i === Number(d.i));
+      if (!a) return;
+      st.folha = { tipo: 'editAjuste', i: a._i, mes: isoDe(a['Mês']).slice(0, 7), conta: a.Conta, valor: typeof a.Valor === 'number' ? brl(a.Valor) : '', obs: a['Observação'] || '', nome: a.Conta + ' de ' + (typeof a['Mês'] === 'number' ? MESES[mesDaSerie(a['Mês']).mes] : '') };
+      desenhar();
+    },
+    salvarEditAjuste: () => {
+      const f = st.folha, a = st.m.ajustes.find((x) => x._i === f.i);
+      if (!a) return;
+      if (!f.mes || !f.conta || String(f.valor).trim() === '') { avisar('Preencha mês, conta e valor.'); return; }
+      const [ano, mes] = f.mes.split('-').map(Number);
+      const serie = Dados.paraSerie(new Date(ano, mes - 1, 1)), valor = numBR(f.valor), mud = {};
+      if (serie !== a['Mês']) mud['Mês'] = serie;
+      if (f.conta !== a.Conta) mud.Conta = f.conta;
+      if (Math.round(valor * 100) !== Math.round((Number(a.Valor) || 0) * 100)) mud.Valor = valor;
+      if (f.obs.trim() !== String(a['Observação'] || '').trim()) mud['Observação'] = f.obs.trim();
+      if (!Object.keys(mud).length) { st.folha = null; avisar('Nada mudou.'); return; }
+      st.folha = null;
+      gravar(() => Dados.alterar('tbAjustes', a._i, mud), 'Valor do mês atualizado.');
+    },
+    // ----- gastos avulsos -----
+    editAvulso: (d) => {
+      const a = st.m.avulsos.find((x) => x._i === Number(d.i));
+      if (!a) return;
+      st.folha = { tipo: 'editAvulso', i: a._i, tipoAv: a.Tipo || 'Despesa', venc: isoDe(a.Vencimento), desc: a['Descrição'] || '', cat: a.Categoria || '',
+        credor: a.Credor || '', valor: typeof a.Valor === 'number' ? brl(a.Valor) : '', nome: a['Descrição'] };
+      desenhar();
+    },
+    fTipoAv: (d) => { st.folha.tipoAv = d.v; desenhar(); },
+    salvarEditAvulso: () => {
+      const f = st.folha, a = st.m.avulsos.find((x) => x._i === f.i);
+      if (!a) return;
+      if (!f.desc.trim() || !f.cat || String(f.valor).trim() === '' || !f.venc) { avisar('Preencha vencimento, descrição, categoria e valor.'); return; }
+      const valor = numBR(f.valor), venc = serieISO(f.venc), mud = {};
+      if (f.tipoAv !== a.Tipo) mud.Tipo = f.tipoAv;
+      if (venc !== a.Vencimento) mud.Vencimento = venc;
+      if (f.desc.trim() !== String(a['Descrição'] || '').trim()) mud['Descrição'] = f.desc.trim();
+      if (f.cat !== a.Categoria) mud.Categoria = f.cat;
+      if (f.credor.trim() !== String(a.Credor || '').trim()) mud.Credor = f.credor.trim();
+      if (Math.round(valor * 100) !== Math.round((Number(a.Valor) || 0) * 100)) mud.Valor = valor;
+      if (!Object.keys(mud).length) { st.folha = null; avisar('Nada mudou.'); return; }
+      st.folha = null;
+      gravar(() => Dados.alterar('tbAvulsos', a._i, mud), 'Gasto avulso atualizado.');
+    },
+    pedirLimpar: (d) => { st.folha = { tipo: 'limpar', tabela: d.v, i: st.folha.i, nome: st.folha.nome }; desenhar(); },
+    confirmarLimpar: () => {
+      const f = st.folha; st.folha = null;
+      gravar(() => Dados.limpar(f.tabela, f.i), 'Apagado.');
+    },
+    // ----- limites dos envelopes -----
+    envMes: (d) => { st.envMes = (st.envMes + Number(d.d) + 12) % 12; desenhar(); },
+    descartarEnvs: () => { st.envv = {}; desenhar(); },
+    salvarEnvs: () => {
+      const mes = st.envMes, col = ABREV[mes];
+      const lista = st.m.envelopesCfg.filter((e) => envAlterado(e, mes));
+      if (!lista.length) { avisar('Nenhum limite mudou em ' + MESES[mes] + '.'); return; }
+      gravar(async () => {
+        for (const e of lista) await Dados.alterar('tbEnvelopes', e._i, { [col]: Math.round(numBR(st.envv[mes + '_' + e._i]) * 100) / 100 });
+      }, lista.length === 1 ? 'Limite de ' + lista[0].Envelope + ' salvo.' : lista.length + ' limites salvos.').then((ok) => {
+        if (ok) lista.forEach((e) => { delete st.envv[mes + '_' + e._i]; });
+        desenhar();
+      });
     },
     avtipo: (d) => { st.av.tipo = d.v; desenhar(); },
     salvarAvulso: () => {
@@ -621,11 +811,6 @@
       if (!a.desc || !a.cat || !valor) { avisar('Preencha descrição, categoria e valor.'); return; }
       gravar(() => Dados.adicionar('tbAvulsos', { Tipo: a.tipo, Vencimento: serieISO(a.venc), 'Descrição': a.desc, Categoria: a.cat, Credor: '', Valor: valor }),
         'Gasto avulso salvo.', null).then(() => { st.av = { ...st.av, desc: '', valor: '' }; desenhar(); });
-    },
-    salvarEnv: (d) => {
-      const v = numBR(document.getElementById('env-' + d.i).value);
-      gravar(() => Dados.alterar('tbEnvelopes', Number(d.i), { [d.v]: v }), 'Limite salvo.',
-        () => { const e = st.m.envelopesCfg.find((x) => x._i === Number(d.i)); if (e) e[d.v] = v; });
     },
     ofBuscar: async () => {
       const of = st.of;
@@ -673,15 +858,26 @@
     if (document.visibilityState === 'visible' && Dados.modo === 'onedrive' && st.atualizadoEm && Date.now() - st.atualizadoEm > 120000) recarregar(true);
   });
 
+  // Abertura: fica no mínimo ~2 s (para a animação aparecer inteira) e some com um esmaecer suave.
+  async function fimAbertura(t0) {
+    const falta = 2200 - (Date.now() - t0);
+    if (falta > 0) await new Promise((ok) => setTimeout(ok, falta));
+    if (!st.m) { st.abertura = false; desenhar(); return; }
+    st.abertura = 'saindo'; desenhar();
+    setTimeout(() => { st.abertura = false; desenhar(); }, 650);
+  }
+
   (async () => {
+    const t0 = Date.now();
     try {
       const r = await Dados.iniciar();
       st.modo = r.modo; st.conta = r.conta;
-      if (r.modo === 'login') { st.carregando = false; desenhar(); return; }
+      if (r.modo === 'login') { st.abertura = false; st.carregando = false; desenhar(); return; }
       await recarregar();
     } catch (e) {
-      st.erro = e.message || String(e); st.carregando = false; desenhar();
+      st.erro = e.message || String(e); st.carregando = false;
     }
+    await fimAbertura(t0);
   })();
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

@@ -1,8 +1,8 @@
 // Guarda as telas do app no iPhone para abrir rápido e sem internet.
 // Os dados da planilha nunca ficam aqui: vêm sempre do OneDrive.
-const VERSAO = 'orcamento-v6';
+const VERSAO = 'orcamento-v7';
 const ARQUIVOS = ['./', 'index.html', 'styles.css', 'config.js', 'data.js', 'app.js', 'manifest.webmanifest',
-  'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
+  'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'icone-moeda.svg'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSAO).then((c) => c.addAll(ARQUIVOS)).then(() => self.skipWaiting()));

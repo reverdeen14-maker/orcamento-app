@@ -127,7 +127,10 @@ const Dados = (() => {
   // ---------- gravar ----------
   async function colunasCalculadas(tabela) {
     if (calcCache[tabela]) return calcCache[tabela];
-    const r = await api('GET', wb() + "/tables('" + tabela + "')/rows/itemAt(index=0)/range?$select=formulas");
+    // fórmulas da primeira linha de dados: coluna com fórmula = calculada (o app nunca grava nela)
+    const p = posTabela(tabela), n = raw.tables[tabela].values[0].length, lin = p.lin0 + 1;
+    const end = colLetra(p.col0) + lin + ':' + colLetra(p.col0 + n - 1) + lin;
+    const r = await api('GET', wb() + folha(p.folha) + "/range(address='" + end + "')?$select=formulas");
     calcCache[tabela] = r.formulas[0].map((f) => typeof f === 'string' && f.startsWith('='));
     return calcCache[tabela];
   }
@@ -137,6 +140,47 @@ const Dados = (() => {
     return cab.map((h, i) => (calc && calc[i]) ? null : (h in obj ? obj[h] : ''));
   }
 
+  // ---------- endereço das células de uma tabela ----------
+  // A tabela vem lida com o endereço da aba (ex.: "Cadastro!B6:P46"). Com ele o app grava direto nas
+  // células pelo caminho worksheets/range(address=...), o jeito documentado da Microsoft para alterar valores.
+  const colNum = (s) => [...s].reduce((n, c) => n * 26 + c.charCodeAt(0) - 64, 0);
+  const colLetra = (n) => { let s = ''; while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); } return s; };
+  function posTabela(tabela) {
+    const ad = (raw.tables[tabela] || {}).address || '';
+    const m = /^(?:'((?:[^']|'')+)'|([^!]+))!\$?([A-Z]+)\$?(\d+)/.exec(ad);
+    if (!m) throw new Error('Não achei o endereço da tabela ' + tabela + '. Toque em Atualizar e tente de novo.');
+    return { folha: (m[1] || m[2]).replace(/''/g, "'"), col0: colNum(m[3]), lin0: Number(m[4]) };
+  }
+  const igual = (a, b) => {
+    const va = a === null || a === undefined ? '' : a, vb = b === null || b === undefined ? '' : b;
+    if (typeof va === 'number' && typeof vb === 'number') return Math.abs(va - vb) < 1e-6;
+    return String(va).trim() === String(vb).trim();
+  };
+  // Lê a linha como ela está agora na planilha e confere com o que o app leu antes.
+  // Se alguém mexeu na planilha nesse meio tempo, não grava (para nunca escrever na linha errada).
+  async function conferirLinha(tabela, indice, calc) {
+    const p = posTabela(tabela), cab = raw.tables[tabela].values[0], lin = p.lin0 + 1 + indice;
+    const end = colLetra(p.col0) + lin + ':' + colLetra(p.col0 + cab.length - 1) + lin;
+    const agora = (await api('GET', wb() + folha(p.folha) + "/range(address='" + end + "')?$select=values")).values[0];
+    const antes = raw.tables[tabela].values[indice + 1];
+    const ok = cab.every((h, i) => (calc && calc[i]) || igual(agora[i], antes[i]));
+    if (!ok) throw new Error('A planilha mudou desde a última leitura. Toque em Atualizar (↻) e faça de novo.');
+  }
+  // Grava só as colunas pedidas (de digitar), em blocos de colunas vizinhas. Fórmulas nunca são tocadas.
+  async function gravarCelulas(tabela, indice, porColuna, calc) {
+    const p = posTabela(tabela), lin = p.lin0 + 1 + indice;
+    const ks = Object.keys(porColuna).map(Number).filter((k) => !(calc && calc[k])).sort((a, b) => a - b);
+    let i = 0;
+    while (i < ks.length) {
+      let j = i;
+      while (j + 1 < ks.length && ks[j + 1] === ks[j] + 1) j++;
+      const a = ks[i], b = ks[j];
+      const end = colLetra(p.col0 + a) + lin + ':' + colLetra(p.col0 + b) + lin;
+      await api('PATCH', wb() + folha(p.folha) + "/range(address='" + end + "')", { values: [ks.slice(i, j + 1).map((k) => porColuna[k])] });
+      i = j + 1;
+    }
+  }
+
   async function adicionar(tabela, obj) {
     if (modo === 'demo') {
       const cab = raw.tables[tabela].values[0];
@@ -144,31 +188,53 @@ const Dados = (() => {
       return;
     }
     const calc = await colunasCalculadas(tabela);
-    const linha = linhaPara(tabela, obj, calc);
+    const cab = raw.tables[tabela].values[0];
     // reaproveita a primeira linha vazia da tabela, se houver
     const vals = raw.tables[tabela].values;
     const entradas = calc.map((c, i) => (c ? -1 : i)).filter((i) => i >= 0);
     const vazia = vals.slice(1).findIndex((r) => entradas.every((i) => r[i] === '' || r[i] === null));
     if (vazia >= 0) {
-      await api('PATCH', wb() + "/tables('" + tabela + "')/rows/itemAt(index=" + vazia + ')/range', { values: [linha] });
+      await conferirLinha(tabela, vazia, calc);
+      const porColuna = {};
+      entradas.forEach((i) => { porColuna[i] = cab[i] in obj ? obj[cab[i]] : ''; });
+      await gravarCelulas(tabela, vazia, porColuna, calc);
     } else {
-      await api('POST', wb() + "/tables('" + tabela + "')/rows/add", { values: [linha] });
+      await api('POST', wb() + "/tables('" + tabela + "')/rows/add", { values: [linhaPara(tabela, obj, calc)] });
     }
   }
 
+  // Altera colunas de digitar de uma linha que já existe.
   async function alterar(tabela, indice, campos) {
+    const cab = raw.tables[tabela].values[0];
+    const desconhecida = Object.keys(campos).find((k) => !cab.includes(k));
+    if (desconhecida) throw new Error('A coluna "' + desconhecida + '" não existe em ' + tabela + '.');
     if (modo === 'demo') {
-      const cab = raw.tables[tabela].values[0];
       Object.entries(campos).forEach(([k, v]) => { raw.tables[tabela].values[indice + 1][cab.indexOf(k)] = v; });
       return;
     }
+    const calc = await colunasCalculadas(tabela);
+    const calcPedida = Object.keys(campos).find((k) => calc[cab.indexOf(k)]);
+    if (calcPedida) throw new Error('A coluna "' + calcPedida + '" é calculada pela planilha e não pode ser alterada.');
+    await conferirLinha(tabela, indice, calc);
+    const porColuna = {};
+    Object.entries(campos).forEach(([k, v]) => { porColuna[cab.indexOf(k)] = v; });
+    await gravarCelulas(tabela, indice, porColuna, calc);
+  }
+
+  // "Apagar" sem tirar a linha da tabela: limpa só as colunas de digitar (as fórmulas ficam).
+  async function limpar(tabela, indice) {
     const cab = raw.tables[tabela].values[0];
-    const linha = cab.map((h) => (h in campos ? campos[h] : null));
-    await api('PATCH', wb() + "/tables('" + tabela + "')/rows/itemAt(index=" + indice + ')/range', { values: [linha] });
+    if (modo === 'demo') { raw.tables[tabela].values[indice + 1] = cab.map(() => ''); return; }
+    const calc = await colunasCalculadas(tabela);
+    await conferirLinha(tabela, indice, calc);
+    const porColuna = {};
+    cab.forEach((h, i) => { if (!calc[i]) porColuna[i] = ''; });
+    await gravarCelulas(tabela, indice, porColuna, calc);
   }
 
   async function apagar(tabela, indice) {
     if (modo === 'demo') { raw.tables[tabela].values.splice(indice + 1, 1); return; }
+    await conferirLinha(tabela, indice, await colunasCalculadas(tabela));
     await api('DELETE', wb() + "/tables('" + tabela + "')/rows/itemAt(index=" + indice + ')');
   }
 
@@ -239,6 +305,6 @@ const Dados = (() => {
     };
   }
 
-  return { iniciar, entrar, sair, carregar, ultimoSalvo, adicionar, alterar, apagar, mudarMes, trocarAno, usarDemo,
+  return { iniciar, entrar, sair, carregar, ultimoSalvo, adicionar, alterar, limpar, apagar, mudarMes, trocarAno, usarDemo,
     paraSerie, deSerie, planilha, get modo() { return modo; } };
 })();
