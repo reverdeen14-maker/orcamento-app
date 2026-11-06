@@ -12,8 +12,14 @@
     aj: { mes: isoHoje.slice(0, 7), conta: '', valor: '', obs: '' },
     av: { tipo: 'Despesa', venc: isoHoje, desc: '', cat: '', valor: '' },
     of: { servidor: localStorage.getItem('ofServidor') || '', itens: [], buscando: false },
-    fx: { tipo: 'Todas', ativas: false }, avTodos: false, envMes: null, envv: {}, abertura: true
+    fx: { tipo: 'Todas', ativas: false }, avTodos: false, envMes: null, envv: {}, abertura: true,
+    lb: { inscrito: false, perm: 'Notification' in window ? Notification.permission : 'default', ocupado: false, info: '' }
   };
+  // tocar na notificação abre o app já na lista de contas (…/?aba=contas)
+  (() => {
+    const p = new URLSearchParams(location.search).get('aba');
+    if (['inicio', 'contas', 'cartoes', 'orcamento', 'mais'].includes(p)) { st.aba = p; if (p === 'contas') st.sub = 'pagar'; history.replaceState(null, '', location.pathname); }
+  })();
   const $app = document.getElementById('app');
 
   // ---------- utilidades ----------
@@ -393,6 +399,28 @@
       + (ab ? '<div class="secao-corpo">' + corpo + '</div>' : '') + '</div>';
   }
 
+  // ---------- lembretes (notificação às 6h) ----------
+  const lbSuportado = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  async function lbVerificar() {
+    if (!lbSuportado()) return;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      st.lb.inscrito = !!(await reg.pushManager.getSubscription());
+      st.lb.perm = Notification.permission;
+    } catch (e) { /* sem service worker */ }
+    desenhar();
+  }
+  async function lbApi(caminho, corpo) {
+    const r = await fetch(window.APP_CONFIG.lembretes.replace(/\/$/, '') + caminho, {
+      method: 'POST', headers: { Authorization: 'Bearer ' + await Dados.tokenAtual(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(corpo || {})
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.erro || 'servidor respondeu ' + r.status);
+    return j;
+  }
+  const chaveBytes = (s) => { const b = atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4)); return Uint8Array.from(b, (c) => c.charCodeAt(0)); };
+
   // limite digitado (ainda não salvo) diferente do que está na planilha?
   function envAlterado(e, mes) {
     const k = mes + '_' + e._i, col = ABREV[mes];
@@ -465,6 +493,22 @@
         + '<div class="cresce col"><span>' + esc(t.description) + '</span><span class="cinza pp">' + esc(t.date) + ' · ' + esc(t.destino) + '</span>'
         + '<select data-c="of.cat.' + k + '">' + opcoesCategorias(t.cat) + '</select></div><b>' + brl(Math.abs(t.amount)) + '</b></div>').join('')
         + '<button class="btn" data-a="ofImportar">Importar selecionadas</button></div>' : '');
+    const lb = st.lb, srv = cfg.lembretes;
+    let lbCorpo;
+    if (!srv) lbCorpo = '<p class="dica">O servidor de lembretes ainda não foi ligado.</p>';
+    else if (!lbSuportado()) lbCorpo = '<p class="dica">Neste aparelho não dá. No iPhone, abra o app pelo ícone da Tela de Início (iOS 16.4 ou mais novo).</p>';
+    else if (Dados.modo !== 'onedrive') lbCorpo = '<p class="dica">Entre com a conta Microsoft para ligar os lembretes.</p>';
+    else {
+      const ligado = lb.inscrito && lb.perm === 'granted';
+      lbCorpo = '<p>Todo dia às <b>6h</b> chega uma notificação com as contas que vencem no dia (e as em atraso). Em dia sem conta, não chega nada.</p>'
+        + '<div class="lin"><span>Neste aparelho</span><b class="' + (ligado ? 'verde' : 'cinza') + '">' + (lb.perm === 'denied' ? 'Bloqueado' : ligado ? 'Ligado ✓' : 'Desligado') + '</b></div>'
+        + (lb.perm === 'denied' ? '<p class="dica">As notificações foram recusadas. No iPhone: Ajustes → Notificações → Orçamento → Permitir.</p>' : '')
+        + (lb.info ? '<p class="dica">' + esc(lb.info) + '</p>' : '')
+        + '<div class="botoes">' + (ligado ? '<button class="btn" data-a="lbTeste"' + (lb.ocupado ? ' disabled' : '') + '>' + (lb.ocupado ? 'Enviando…' : 'Mandar um teste agora') + '</button>'
+          + '<button class="btn sec" data-a="lbDesativar"' + (lb.ocupado ? ' disabled' : '') + '>Desligar neste aparelho</button>'
+          : '<button class="btn" data-a="lbAtivar"' + (lb.ocupado || lb.perm === 'denied' ? ' disabled' : '') + '>' + (lb.ocupado ? 'Ligando…' : 'Ligar lembretes') + '</button>') + '</div>'
+        + '<p class="dica">Cada celular liga o seu (o seu e o da Bianca).</p>';
+    }
     const instalar = '<p>No iPhone, abra o endereço do app no <b>Safari</b>, toque em <b>Compartilhar</b> (quadrado com seta) e depois em <b>Adicionar à Tela de Início</b>. O ícone abre o app em tela cheia.</p>';
     return cabecalho('Mais', 'Cadastro e ajustes') + '<section class="bloco secoes">'
       + secao('planilha', 'XL', '#157F3B', 'Planilha e conta', Dados.modo === 'demo' ? 'Modo demonstração' : 'OneDrive · ' + pl.ano, planilhaCorpo)
@@ -472,6 +516,7 @@
       + secao('valores', 'VM', '#B45309', 'Valores do mês', 'Quando uma conta muda só num mês', valores)
       + secao('avulsos', 'AV', '#6D28D9', 'Gastos avulsos', 'Aniversários, IPVA, revisões…', avulsos)
       + secao('envelopes', 'EN', '#0F766E', 'Limites dos envelopes', 'Mês de ' + MESES[st.envMes], envs)
+      + secao('lembretes', '🔔', '#E9A21C', 'Lembretes no celular', 'Aviso das contas do dia às 6h', lbCorpo)
       + secao('openfinance', 'OF', '#45454A', 'Conexões bancárias', 'Open Finance (precisa de servidor)', ofCorpo)
       + secao('instalar', 'IN', '#B42318', 'Instalar no iPhone', 'Ícone na tela de início', instalar)
       + '</section>' + rodapeStatus();
@@ -694,7 +739,48 @@
         gravar(() => Dados.adicionar('tbFluxo', linha), 'Lançamento salvo no Fluxo.', null).then((ok) => { if (ok) { limpar(); desenhar(); } });
       }
     },
-    abrir: (d) => { st.aberto = st.aberto === d.v ? '' : d.v; desenhar(); },
+    abrir: (d) => { st.aberto = st.aberto === d.v ? '' : d.v; desenhar(); if (st.aberto === 'lembretes') lbVerificar(); },
+    lbAtivar: async () => {
+      const lb = st.lb;
+      try {
+        // o pedido de permissão precisa vir logo no toque (regra do iPhone)
+        const perm = await Notification.requestPermission();
+        lb.perm = perm;
+        if (perm !== 'granted') { desenhar(); avisar('Sem permissão, não dá para mandar notificações.'); return; }
+        lb.ocupado = true; lb.info = ''; desenhar();
+        const srv = window.APP_CONFIG.lembretes.replace(/\/$/, '');
+        const chave = await (await fetch(srv + '/vapid')).text();
+        const reg = await navigator.serviceWorker.ready;
+        const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: chaveBytes(chave) }));
+        const r = await lbApi('/subscribe', { subscription: sub.toJSON(), aparelho: /iPhone/.test(navigator.userAgent) ? 'iPhone' : navigator.platform || 'aparelho' });
+        lb.inscrito = true; lb.info = r.aparelhos + (r.aparelhos === 1 ? ' aparelho recebe' : ' aparelhos recebem') + ' os lembretes.';
+        avisar('Lembretes ligados. Toque em "Mandar um teste agora" para ver como chega.');
+      } catch (e) { avisar('Não deu para ligar: ' + (e.message || e)); }
+      lb.ocupado = false; desenhar();
+    },
+    lbTeste: async () => {
+      const lb = st.lb;
+      lb.ocupado = true; desenhar();
+      try {
+        const r = await lbApi('/test');
+        if (r.erro === 'SEM_LOGIN') lb.info = 'O servidor precisa entrar na conta Microsoft (link do servidor /auth/login).';
+        else if (r.erro) lb.info = 'Erro no servidor: ' + r.erro;
+        else lb.info = 'Teste enviado para ' + r.entregues + ' de ' + r.aparelhos + ' aparelho(s). Hoje: ' + r.hoje + ' conta(s) vencendo, ' + r.atraso + ' em atraso.' + (r.erros && r.erros.length ? ' Falhas: ' + r.erros.join('; ') : '');
+      } catch (e) { lb.info = 'Não deu: ' + (e.message || e); }
+      lb.ocupado = false; desenhar();
+    },
+    lbDesativar: async () => {
+      const lb = st.lb;
+      lb.ocupado = true; desenhar();
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) { await lbApi('/unsubscribe', { subscription: sub.toJSON() }).catch(() => {}); await sub.unsubscribe(); }
+        lb.inscrito = false; lb.info = '';
+        avisar('Lembretes desligados neste aparelho.');
+      } catch (e) { avisar('Não deu: ' + (e.message || e)); }
+      lb.ocupado = false; desenhar();
+    },
     ano: (d) => { Dados.trocarAno(d.v); st.m = null; st.orcMes = null; st.fat.idx = null; recarregar(); },
     entrar: () => { Dados.usarDemo(false); Dados.entrar(); },
     sair: () => Dados.sair(),

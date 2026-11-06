@@ -305,6 +305,9 @@ const Dados = (() => {
     };
   }
 
-  return { iniciar, entrar, sair, carregar, ultimoSalvo, adicionar, alterar, limpar, apagar, mudarMes, trocarAno, usarDemo,
+  // token da conta Microsoft, para o servidor de lembretes conferir que é a conta dona das planilhas
+  const tokenAtual = () => token();
+
+  return { iniciar, entrar, sair, carregar, ultimoSalvo, adicionar, alterar, limpar, apagar, mudarMes, trocarAno, usarDemo, tokenAtual,
     paraSerie, deSerie, planilha, get modo() { return modo; } };
 })();

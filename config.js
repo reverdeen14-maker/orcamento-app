@@ -10,5 +10,8 @@ window.APP_CONFIG = {
   ],
 
   // Permissões pedidas à conta Microsoft: ler e gravar arquivos do OneDrive.
-  escopos: ['Files.ReadWrite', 'User.Read']
+  escopos: ['Files.ReadWrite', 'User.Read'],
+
+  // Servidor que manda o lembrete das 6h (pasta orcamento-lembretes). Vazio = lembretes desligados.
+  lembretes: 'https://orcamento-lembretes.drabiancaalvess.workers.dev'
 };
