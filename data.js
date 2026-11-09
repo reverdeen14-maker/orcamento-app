@@ -122,6 +122,51 @@ const Dados = (() => {
     localStorage.setItem(chave, antiga ? 'corrigida' : 'ok');
   }
 
+  // ---------- correção única da mesada do Miguel (09/11/2026) ----------
+  // Antes: compra no cartão com categoria Mesada Miguel recalculava TODAS as sextas, até as já pagas.
+  // Agora: sexta paga fica com o valor pago; o que sobra (limite − cartão − já pago) divide entre as não pagas.
+  // Troca só os dois trechos exatos da fórmula de Compromissos!B9 (o resto fica igual) e a célula "Por sexta" (S13).
+  let avisoMigracao = '';
+  const pegarAvisoMigracao = () => { const a = avisoMigracao; avisoMigracao = ''; return a; };
+  const MES_ANT1 = 'mp,ROUND(ms/mn,2),';
+  const MES_NOV1 = 'mpg,SUMIFS(tbFluxo[Valor],tbFluxo[Descrição],"Mesada Miguel sexta "&mk,tbFluxo[Mês],m)'
+    + '+SUMIFS(tbFluxo[Valor],tbFluxo[Compromisso],"Mesada Miguel sexta "&mk,tbFluxo[Descrição],"<>"&("Mesada Miguel sexta "&mk),tbFluxo[Mês],m),'
+    + 'mpt,SUM(mpg),mnu,SUM(--(mpg=0)),mrs,MAX(0,ml-mc-mpt),mp,IF(mnu>0,ROUND(mrs/mnu,2),0),mlu,MAX(IF(mpg=0,mk,0)),';
+  const MES_ANT2 = 'IF(mk=mn,ms-mp*(mn-1),mp)';
+  const MES_NOV2 = 'IF(mpg>0,mpg,IF(mk=mlu,mrs-mp*(mnu-1),mp))';
+  const MES_S13 = '=LET(m,MesRef,k,SEQUENCE(S12),n,"Mesada Miguel sexta "&k,'
+    + 'pg,SUMIFS(tbFluxo[Valor],tbFluxo[Descrição],n,tbFluxo[Mês],m)+SUMIFS(tbFluxo[Valor],tbFluxo[Compromisso],n,tbFluxo[Descrição],"<>"&n,tbFluxo[Mês],m),'
+    + 'nu,SUM(--(pg=0)),IFERROR(IF(nu>0,ROUND(MAX(0,S9-S10-SUM(pg))/nu,2),0),0))';
+  async function migrarMesada() {
+    const chave = 'migMesada-' + planilha().ano;
+    if (localStorage.getItem(chave)) return;
+    const comp = folha('Compromissos');
+    const lerF = async (a) => String((await api('GET', wb() + comp + "/range(address='" + a + "')?$select=formulas")).formulas[0][0] || '');
+    const f = await lerF('B9');
+    const conta = (s, t) => s.split(t).length - 1;
+    if (f.includes('mpg,')) { localStorage.setItem(chave, 'ok'); return; }
+    if (conta(f, MES_ANT1) !== 1 || conta(f, MES_ANT2) !== 1) {
+      localStorage.setItem(chave, 'nao-encontrada');
+      avisoMigracao = 'Não consegui ajustar a regra da mesada na planilha (fórmula diferente do esperado). Avise o assistente.';
+      return;
+    }
+    const s13 = await lerF('S13');
+    await api('PATCH', wb() + comp + "/range(address='B9')", { formulas: [[f.replace(MES_ANT1, MES_NOV1).replace(MES_ANT2, MES_NOV2)]] });
+    await api('PATCH', wb() + comp + "/range(address='S13')", { formulas: [[MES_S13]] });
+    // confere: a lista do mês tem que continuar aparecendo (datas na coluna B, valores na G), sem erro
+    const v = (await api('GET', wb() + comp + "/range(address='B9:G14')?$select=values")).values;
+    const ruim = typeof v[0][0] !== 'number' || v.some((l) => l.some((x) => typeof x === 'string' && x.startsWith('#')));
+    if (ruim) {
+      await api('PATCH', wb() + comp + "/range(address='B9')", { formulas: [[f]] });
+      await api('PATCH', wb() + comp + "/range(address='S13')", { formulas: [[s13]] });
+      localStorage.setItem(chave, 'falhou');
+      avisoMigracao = 'A regra nova da mesada deu erro na planilha e foi desfeita. Avise o assistente.';
+      return;
+    }
+    localStorage.setItem(chave, 'corrigida');
+    avisoMigracao = 'Mesada do Miguel ajustada: sextas já pagas não mudam mais.';
+  }
+
   // ---------- carregar tudo ----------
   async function carregar() {
     if (modo === 'demo') {
@@ -136,6 +181,7 @@ const Dados = (() => {
     let rs, ts;
     try {
       try { await migrarRecebido(); } catch (e) { /* não impede a leitura */ }
+      try { await migrarMesada(); } catch (e) { /* não impede a leitura */ }
       rs = await emLotes(RANGES, lerRange);
       ts = await emLotes(TABELAS, lerTabela);
     } finally {
@@ -335,6 +381,6 @@ const Dados = (() => {
   // token da conta Microsoft, para o servidor de lembretes conferir que é a conta dona das planilhas
   const tokenAtual = () => token();
 
-  return { iniciar, entrar, sair, carregar, ultimoSalvo, adicionar, alterar, limpar, apagar, mudarMes, trocarAno, usarDemo, tokenAtual,
+  return { iniciar, entrar, sair, carregar, ultimoSalvo, adicionar, alterar, limpar, apagar, mudarMes, trocarAno, usarDemo, tokenAtual, pegarAvisoMigracao,
     paraSerie, deSerie, planilha, get modo() { return modo; } };
 })();

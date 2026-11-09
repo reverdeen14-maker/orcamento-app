@@ -52,6 +52,8 @@
     try {
       st.m = await Dados.carregar();
       st.erro = ''; st.atualizadoEm = new Date();
+      const aviso = Dados.pegarAvisoMigracao();
+      if (aviso) setTimeout(() => avisar(aviso), 2600); // depois da abertura animada
     } catch (e) {
       st.erro = e.message || String(e);
       if (!st.m) st.m = Dados.ultimoSalvo();
@@ -308,8 +310,8 @@
         + '<div class="lin"><span class="cinza">Mesada do mês</span><b>' + rs(me.mesada) + '</b></div>'
         + '<div class="lin"><span class="cinza">Já gasto no cartão</span><b class="vermelho">− ' + rs(me.cartao) + '</b></div>'
         + '<div class="lin"><span class="cinza">Sobra para as sextas</span><b>' + rs(me.sobra) + '</b></div><hr>'
-        + '<div class="lin"><span class="cinza">' + me.sextas + ' sextas · por sexta</span><b class="azul grande2">' + rs(me.porSexta) + '</b></div></section>'
-        + '<p class="dica">Compras com a categoria Mesada Miguel abatem na fatura em que caem.</p>'
+        + '<div class="lin"><span class="cinza">' + me.sextas + ' sextas · cada sexta que falta</span><b class="azul grande2">' + rs(me.porSexta) + '</b></div></section>'
+        + '<p class="dica">Compras com a categoria Mesada Miguel abatem na fatura em que caem. Sexta já paga fica com o valor pago; só as que faltam são recalculadas.</p>'
         + '<section class="bloco lista">' + sextas.map((x) => '<div class="item"><span class="cinza p larg">' + dm(x.venc) + '</span><span class="cresce">' + esc(x.desc) + '</span><b>' + brl(x.valor) + '</b><span class="st ' + (x.status === 'Pago' ? 'verde' : 'laranja') + '">' + esc(x.status) + '</span></div>').join('') + '</section>';
     }
     return cabecalho('Compromissos', nomeMes(m.mesRef)) + segmento([['pagar', 'A pagar'], ['receber', 'A receber'], ['mesada', 'Mesada Miguel']], st.sub, 'sub') + corpo;
