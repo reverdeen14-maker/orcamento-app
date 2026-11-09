@@ -348,9 +348,13 @@
       const nome = c['Cartão'], on = nome === st.fat.cartao;
       return '<button class="cartao ' + (on ? 'on' : '') + '" data-a="cartao" data-v="' + esc(nome) + '"><span>' + esc(nome) + '</span><b>' + brl(soma(daFatura(nome))) + '</b><span class="pp">vence dia ' + c.Vencimento + '</span></button>';
     }).join('');
-    const env = (x) => x['Envelope final'] || (x['Família'] === 'Não' ? 'Fora do orçamento' : 'Sem envelope');
+    // Compras do negócio da Bianca ganham filtro próprio (antes ficavam junto com YouTube/Spotify em "Fora do orçamento")
+    const NEGOCIO = 'Negócio Dra. Bianca';
+    const ehNegocio = (x) => /^neg[oó]cio/i.test(String(x.Categoria || ''));
+    const env = (x) => (ehNegocio(x) ? NEGOCIO : x['Envelope final'] || (x['Família'] === 'Não' ? 'Fora do orçamento' : 'Sem envelope'));
     const todas = daFatura(st.fat.cartao);
     const nomes = ['Todos'];
+    if (todas.some(ehNegocio)) nomes.push(NEGOCIO); // logo depois de "Todos", fácil de achar
     todas.forEach((x) => { if (!nomes.includes(env(x))) nomes.push(env(x)); });
     if (!nomes.includes(st.fat.filtro)) st.fat.filtro = 'Todos';
     const sel = todas.filter((x) => st.fat.filtro === 'Todos' || env(x) === st.fat.filtro);
@@ -369,7 +373,9 @@
       + '<div class="lin"><span class="cinza">Total da fatura</span><b class="grande2">' + rs(total) + '</b></div>'
       + '<div class="trilho grosso"><div class="barra" style="width:' + pf + '%"></div><div class="barra laranja-f" style="width:' + (100 - pf) + '%"></div></div>'
       + '<div class="lin pp"><span>● Família ' + rs(total - fora) + '</span><span class="laranja">● Fora do orçamento ' + rs(fora) + '</span></div></section>'
-      + '<div class="chips">' + nomes.map((n) => '<button class="chip ' + (n === st.fat.filtro ? 'on' : '') + '" data-a="filtro" data-v="' + esc(n) + '">' + esc(n) + '</button>').join('') + '</div>'
+      + '<div class="chips">' + nomes.map((n) => '<button class="chip ' + (n === NEGOCIO ? 'neg ' : '') + (n === st.fat.filtro ? 'on' : '') + '" data-a="filtro" data-v="' + esc(n) + '">' + (n === NEGOCIO ? '💼 ' : '') + esc(n) + '</button>').join('') + '</div>'
+      + (st.fat.filtro === NEGOCIO ? '<div class="neg-res"><span>Negócio da Dra. Bianca nesta fatura</span><b>' + rs(soma(sel)) + '</b><span class="pp">'
+        + (soma(sel) < 0 ? 'É crédito do negócio (reembolso): volta para ela.' : 'É o que ela paga por fora (não entra no orçamento da família).') + '</span></div>' : '')
       + '<section class="bloco lista"><div class="lin"><b>' + sel.length + ' compras</b><b class="azul">' + rs(soma(sel)) + '</b></div>'
       + '<p class="dica">Toque numa compra para corrigir ou apagar.</p>'
       + sel.map((x) => '<div class="item"><button class="linha-edit" data-a="editCompra" data-i="' + x._i + '"><span class="cinza pp larg">' + dm(x.Data) + '</span><span class="cresce col"><span>' + esc(x['Descrição']) + '</span><span class="cinza pp">' + esc(x.Categoria) + ' · ' + parc(x) + '</span></span>'
