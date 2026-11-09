@@ -102,7 +102,7 @@
       '<div class="acoes-cab"><button class="redondo" data-a="mes" data-d="-1" aria-label="Mês anterior">‹</button>'
       + '<button class="redondo" data-a="mes" data-d="1" aria-label="Próximo mês">›</button>'
       + '<button class="redondo" data-a="atualizar" aria-label="Atualizar da planilha">' + svg('atualizar', 20) + '</button></div>')
-      + '<section class="destaque"><span class="rot">Saldo em conta agora</span><strong class="grande">' + rs(p.saldo) + '</strong>'
+      + '<section class="destaque toque" data-a="extrato" role="button" tabindex="0" aria-label="Ver extrato da conta"><span class="rot lin-ext">Saldo em conta agora<span class="ver-ext">Extrato ›</span></span><strong class="grande">' + rs(p.saldo) + '</strong>'
       + '<span class="rot">' + esc(p.txtSaldo) + '</span><div class="duas">'
       + '<div><span>Caixinha</span><b>' + rs(p.caixinha) + '</b></div><div><span>Faturas do mês</span><b>' + rs(p.faturas) + '</b></div></div></section>'
       + secaoContas()
@@ -217,6 +217,51 @@
         + '<span class="cresce">' + esc(x.desc) + (x.manual ? '' : ' <span class="tag-fluxo">Fluxo</span>') + '</span>'
         + '<b class="' + (x.saldo ? 'azul' : x.valor < 0 ? 'vermelho' : 'verde') + '">' + (x.saldo ? '= ' + brl(x.valor) : (x.valor > 0 ? '+' : '') + brl(x.valor)) + '</b></div>').join('')
         : '<p class="dica">Nenhum movimento ainda.</p>') + '</div>';
+  }
+
+  // Extrato da conta principal (99Pay = aba Fluxo): o que entrou e saiu, do mais novo para o mais antigo
+  const DIAS_SEM = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+  const FILTROS_EXT = {
+    Tudo: () => true,
+    Entradas: (x) => Number(x.Movimento) > 0 && x.Tipo !== 'Resgate',
+    'Saídas': (x) => x.Tipo === 'Saída',
+    Faturas: (x) => x.Tipo === 'Pagamento fatura',
+    Caixinha: (x) => x.Tipo === 'Aplicação' || x.Tipo === 'Resgate'
+  };
+  function folhaExtrato(f) {
+    const m = st.m;
+    const todos = (m.fluxo || []).filter((x) => typeof x.Data === 'number' && x.Tipo)
+      .sort((a, b) => (Math.floor(b.Data) - Math.floor(a.Data)) || (b._i - a._i));
+    const lista = todos.filter(FILTROS_EXT[f.filtro] || FILTROS_EXT.Tudo);
+    const doMes = todos.filter((x) => x['Mês'] === m.mesRef);
+    const ent = doMes.filter((x) => Number(x.Movimento) > 0).reduce((t, x) => t + Number(x.Movimento), 0);
+    const sai = doMes.filter((x) => Number(x.Movimento) < 0).reduce((t, x) => t - Number(x.Movimento), 0);
+    const hojeS = Dados.paraSerie(hoje);
+    const nomeDia = (s) => {
+      const d = Math.floor(s);
+      if (d === hojeS) return 'Hoje';
+      if (d === hojeS - 1) return 'Ontem';
+      const dt = Dados.deSerie(d);
+      return DIAS_SEM[dt.getDay()][0].toUpperCase() + DIAS_SEM[dt.getDay()].slice(1) + ', ' + String(dt.getDate()).padStart(2, '0') + ' de ' + MESES[dt.getMonth()];
+    };
+    let ultimoDia = null;
+    const itens = lista.slice(0, f.n).map((x) => {
+      const mov = Number(x.Movimento) || 0, d = Math.floor(x.Data);
+      const cab = d !== ultimoDia ? '<div class="ext-dia">' + nomeDia(d) + '</div>' : '';
+      ultimoDia = d;
+      const sub = [x.Tipo === 'Pagamento fatura' ? 'Fatura' : x.Tipo, x['Categoria final'] || x.Compromisso].filter(Boolean).join(' · ');
+      return cab + '<div class="ext-item"><span class="ext-ic ' + (mov > 0 ? 'ent' : mov < 0 ? 'sai' : '') + '" aria-hidden="true">' + (mov > 0 ? '↓' : '↑') + '</span>'
+        + '<span class="cresce col"><span>' + esc(x['Descrição']) + '</span><span class="cinza pp">' + esc(sub) + '</span></span>'
+        + '<span class="col dir"><b class="' + (mov > 0 ? 'verde' : '') + '">' + (mov > 0 ? '+ ' : mov < 0 ? '− ' : '') + brl(Math.abs(mov)) + '</b>'
+        + (typeof x.Saldo === 'number' ? '<span class="cinza pp">saldo ' + brl(x.Saldo) + '</span>' : '') + '</span></div>';
+    }).join('');
+    return '<div class="ext-topo"><div><span class="cinza p">Conta 99Pay · saldo agora</span><b class="grande2">' + rs(m.painel.saldo) + '</b></div>'
+      + '<button class="redondo" data-a="fechar" aria-label="Fechar extrato">×</button></div>'
+      + '<div class="duas-cards ext-res"><div class="card"><span class="cinza pp">Entrou em ' + MESES[mesDaSerie(m.mesRef).mes] + '</span><b class="verde">+ ' + brl(ent) + '</b></div>'
+      + '<div class="card"><span class="cinza pp">Saiu em ' + MESES[mesDaSerie(m.mesRef).mes] + '</span><b>− ' + brl(sai) + '</b></div></div>'
+      + '<div class="chips ext-filtros">' + Object.keys(FILTROS_EXT).map((k) => '<button class="chip ' + (k === f.filtro ? 'on' : '') + '" data-a="extFiltro" data-v="' + k + '">' + k + '</button>').join('') + '</div>'
+      + '<div class="extrato-lista">' + (itens || '<p class="dica">Nenhum lançamento aqui.</p>') + '</div>'
+      + (lista.length > f.n ? '<div class="botoes"><button class="btn sec" data-a="extMais">Ver mais antigos (' + (lista.length - f.n) + ')</button></div>' : '');
   }
 
   function rodapeStatus() {
@@ -553,6 +598,8 @@
     } else if (f.tipo === 'desfazer') {
       corpo = '<h2>Desfazer ' + esc(f.item.desc) + '?</h2><p class="dica">Apaga do Fluxo o lançamento de ' + rs(f.linha.Valor) + ' em ' + dm(f.linha.Data) + '.</p>'
         + '<div class="botoes"><button class="btn perigo" data-a="confirmarDesfazer">Apagar lançamento</button><button class="btn sec" data-a="fechar">Cancelar</button></div>';
+    } else if (f.tipo === 'extrato') {
+      corpo = folhaExtrato(f);
     } else if (f.tipo === 'editCompra') {
       const np = f.mensal ? 1 : Math.max(1, parseInt(f.parcelas, 10) || 1);
       corpo = '<h2>Compra no cartão ' + esc(f.cartao) + '</h2>'
@@ -737,6 +784,9 @@
       const f = st.folha; st.folha = null;
       gravar(() => Dados.apagar('tbFluxo', f.linha._i), 'Lançamento apagado.', () => { f.item.status = f.item.recebido !== undefined ? 'A receber' : 'Pendente'; });
     },
+    extrato: () => { st.folha = { tipo: 'extrato', filtro: 'Tudo', n: 40 }; desenhar(); },
+    extFiltro: (d) => { st.folha.filtro = d.v; st.folha.n = 40; desenhar(); },
+    extMais: () => { st.folha.n += 40; desenhar(); },
     abrirConta: (d) => { st.folha = { tipo: 'conta', i: Number(d.i), modo: 'saldo', valor: '', desc: '' }; desenhar(); },
     modoConta: (d) => { st.folha.modo = d.v; desenhar(); },
     salvarConta: () => {
