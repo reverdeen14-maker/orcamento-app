@@ -8,7 +8,7 @@
   const st = {
     aba: 'inicio', sub: 'pagar', m: null, carregando: true, erro: '', aviso: '', conta: null, modo: 'demo', atualizadoEm: null,
     fat: { cartao: null, idx: null, filtro: 'Todos' }, orcMes: null, aberto: 'planilha', folha: null,
-    lanc: { forma: 'cartao', tipo: 'Saída', valor: '', desc: '', data: isoHoje, cat: '', cartao: '', parcelas: 1, mensal: false, comp: '' },
+    lanc: { forma: 'cartao', tipo: 'Saída', valor: '', desc: '', data: isoHoje, cat: '', cartao: '', parcelas: 1, mensal: false, comp: '', modoValor: 'total' },
     aj: { mes: isoHoje.slice(0, 7), conta: '', valor: '', obs: '' },
     av: { tipo: 'Despesa', venc: isoHoje, desc: '', cat: '', valor: '' },
     of: { servidor: localStorage.getItem('ofServidor') || '', itens: [], buscando: false },
@@ -324,8 +324,9 @@
       + '<div class="lin pp"><span>● Família ' + rs(total - fora) + '</span><span class="laranja">● Fora do orçamento ' + rs(fora) + '</span></div></section>'
       + '<div class="chips">' + nomes.map((n) => '<button class="chip ' + (n === st.fat.filtro ? 'on' : '') + '" data-a="filtro" data-v="' + esc(n) + '">' + esc(n) + '</button>').join('') + '</div>'
       + '<section class="bloco lista"><div class="lin"><b>' + sel.length + ' compras</b><b class="azul">' + rs(soma(sel)) + '</b></div>'
-      + sel.map((x) => '<div class="item"><span class="cinza pp larg">' + dm(x.Data) + '</span><div class="cresce col"><span>' + esc(x['Descrição']) + '</span><span class="cinza pp">' + esc(x.Categoria) + ' · ' + parc(x) + '</span></div>'
-        + '<b class="' + (x['Valor parcela'] < 0 ? 'verde' : x['Família'] === 'Não' ? 'laranja' : '') + '">' + brl(x['Valor parcela']) + '</b></div>').join('') + '</section>';
+      + '<p class="dica">Toque numa compra para corrigir ou apagar.</p>'
+      + sel.map((x) => '<div class="item"><button class="linha-edit" data-a="editCompra" data-i="' + x._i + '"><span class="cinza pp larg">' + dm(x.Data) + '</span><span class="cresce col"><span>' + esc(x['Descrição']) + '</span><span class="cinza pp">' + esc(x.Categoria) + ' · ' + parc(x) + '</span></span>'
+        + '<b class="' + (x['Valor parcela'] < 0 ? 'verde' : x['Família'] === 'Não' ? 'laranja' : '') + '">' + brl(x['Valor parcela']) + '</b><span class="seta" aria-hidden="true">›</span></button></div>').join('') + '</section>';
   }
 
   function telaOrcamento() {
@@ -362,8 +363,16 @@
       + cs.map((c) => '<option' + (c === sel ? ' selected' : '') + '>' + esc(c) + '</option>').join('') + '</optgroup>').join('');
   }
 
+  // Compra parcelada: a planilha guarda o valor de UMA parcela. Se a pessoa digitou o total, divide.
+  function valorParcela(l) {
+    const v = numBR(l.valor);
+    if (l.forma !== 'cartao' || l.mensal || l.parcelas <= 1 || l.modoValor !== 'total') return v;
+    return Math.round((v / l.parcelas) * 100) / 100;
+  }
+
   function telaLancar() {
     const l = st.lanc, m = st.m;
+    const parcelado = l.forma === 'cartao' && !l.mensal && l.parcelas > 1;
     if (!l.cartao) l.cartao = (m.cartoes[0] || {})['Cartão'] || '';
     const cat = m.categorias.find((c) => c.Categoria === l.cat);
     const envTxt = !cat ? '' : cat.Natureza === 'Fora do orçamento' ? 'Fora do orçamento da família.' : cat.Envelope ? 'Envelope ' + cat.Envelope + ': abate do limite do mês.' : 'Sem envelope: entra direto na categoria.';
@@ -383,9 +392,11 @@
     }
     return '<header class="cab barra-acao"><button class="texto" data-a="aba" data-v="inicio">Cancelar</button><h1 class="peq">Novo lançamento</h1><button class="texto forte" data-a="salvarLanc">Salvar</button></header>'
       + segmento([['pix', 'Pix / débito / dinheiro'], ['cartao', 'Cartão de crédito']], l.forma, 'forma')
-      + '<section class="bloco centro"><label for="valor" class="cinza p">' + (l.forma === 'cartao' && l.parcelas > 1 ? 'Valor de cada parcela' : 'Valor') + '</label>'
+      + '<section class="bloco centro">'
+      + (parcelado ? segmento([['total', 'Valor total da compra'], ['parcela', 'Valor da parcela']], l.modoValor, 'modoValor') : '')
+      + '<label for="valor" class="cinza p">' + (!parcelado ? 'Valor' : l.modoValor === 'total' ? 'Valor total da compra' : 'Valor de cada parcela') + '</label>'
       + '<div class="valor"><span>R$</span><input id="valor" inputmode="decimal" placeholder="0,00" value="' + esc(l.valor) + '" data-c="lanc.valor"></div>'
-      + (l.forma === 'cartao' && l.parcelas > 1 && numBR(l.valor) ? '<span class="cinza pp">Total ' + rs(numBR(l.valor) * l.parcelas) + '</span>' : '') + '</section>'
+      + (parcelado && numBR(l.valor) ? '<span class="resumo-parc">' + l.parcelas + 'x de <b>' + rs(valorParcela(l)) + '</b> · total ' + rs(valorParcela(l) * l.parcelas) + '</span>' : '') + '</section>'
       + '<section class="bloco form"><label class="campo"><span class="cinza">Descrição</span><input data-c="lanc.desc" value="' + esc(l.desc) + '" placeholder="Ex.: Nosso Atacarejo"></label>'
       + '<label class="campo"><span class="cinza">Data</span><input type="date" data-c="lanc.data" value="' + esc(l.data) + '"></label>'
       + '<label class="campo"><span class="cinza">Categoria</span><select data-c="lanc.cat">' + opcoesCategorias(l.cat) + '</select></label>'
@@ -542,6 +553,18 @@
     } else if (f.tipo === 'desfazer') {
       corpo = '<h2>Desfazer ' + esc(f.item.desc) + '?</h2><p class="dica">Apaga do Fluxo o lançamento de ' + rs(f.linha.Valor) + ' em ' + dm(f.linha.Data) + '.</p>'
         + '<div class="botoes"><button class="btn perigo" data-a="confirmarDesfazer">Apagar lançamento</button><button class="btn sec" data-a="fechar">Cancelar</button></div>';
+    } else if (f.tipo === 'editCompra') {
+      const np = f.mensal ? 1 : Math.max(1, parseInt(f.parcelas, 10) || 1);
+      corpo = '<h2>Compra no cartão ' + esc(f.cartao) + '</h2>'
+        + '<label class="campo"><span class="cinza">Descrição</span><input data-c="folha.desc" value="' + esc(f.desc) + '"></label>'
+        + '<label class="campo"><span class="cinza">Data</span><input type="date" data-c="folha.data" value="' + esc(f.data) + '"></label>'
+        + '<label class="campo"><span class="cinza">Valor de cada parcela</span><input inputmode="decimal" data-c="folha.valor" value="' + esc(f.valor) + '" placeholder="0,00"></label>'
+        + '<div class="campo"><span class="cinza">Parcelas</span><div class="passo"><button data-a="fParc" data-d="-1" aria-label="Menos parcelas">−</button><b>' + (f.mensal ? 'Mensal' : np === 1 ? 'À vista' : np + 'x') + '</b><button data-a="fParc" data-d="1" aria-label="Mais parcelas">+</button></div></div>'
+        + '<label class="campo"><span class="cinza">Categoria</span><select data-c="folha.cat">' + opcoesCategorias(f.cat) + '</select></label>'
+        + (!f.mensal && np > 1 && numBR(f.valor) ? '<p class="info">' + np + 'x de ' + rs(numBR(f.valor)) + ' · total ' + rs(numBR(f.valor) * np) + '</p>' : '')
+        + '<p class="dica">Se você lançou o total como se fosse a parcela, toque em "Dividir pelo nº de parcelas".</p>'
+        + '<div class="botoes"><button class="btn" data-a="salvarCompra">Salvar</button><button class="btn sec" data-a="dividirCompra">Dividir pelo nº de parcelas</button>'
+        + '<button class="btn sec" data-a="fechar">Cancelar</button><button class="btn perigo-sec" data-a="pedirLimpar" data-v="tbCartao">Apagar</button></div>';
     } else if (f.tipo === 'escolherDesfazer') {
       corpo = '<h2>Desfazer ' + esc(f.item.desc) + '</h2><p class="dica">Não há lançamento com esse nome no Fluxo. Estes são os lançamentos do mês na categoria '
         + esc(f.item.categoria) + '. Toque no que deve ser apagado:</p>'
@@ -736,15 +759,46 @@
     forma: (d) => { st.lanc.forma = d.v; desenhar(); },
     lt: (d) => { st.lanc.tipo = d.v; desenhar(); },
     lc: (d) => { st.lanc.cartao = d.v; desenhar(); },
+    modoValor: (d) => { st.lanc.modoValor = d.v; desenhar(); },
+    // ----- corrigir/apagar compra no cartão -----
+    editCompra: (d) => {
+      const x = st.m.compras.find((c) => c._i === Number(d.i));
+      if (!x) return;
+      st.folha = { tipo: 'editCompra', i: x._i, cartao: x['Cartão'], desc: x['Descrição'] || '', data: isoDe(x.Data), valor: brl(Number(x['Valor parcela']) || 0),
+        parcelas: x.Parcelas === 'Mensal' ? 1 : (Number(x.Parcelas) || 1), mensal: x.Parcelas === 'Mensal', cat: x.Categoria || '', nome: x['Descrição'] };
+      desenhar();
+    },
+    fParc: (d) => { const f = st.folha; f.mensal = false; f.parcelas = Math.max(1, Math.min(48, (parseInt(f.parcelas, 10) || 1) + Number(d.d))); desenhar(); },
+    dividirCompra: () => {
+      const f = st.folha, n = parseInt(f.parcelas, 10) || 1;
+      if (f.mensal || n <= 1) { avisar('Só dá para dividir uma compra parcelada.'); return; }
+      f.valor = brl(Math.round((numBR(f.valor) / n) * 100) / 100); desenhar();
+      avisar('Valor dividido em ' + n + ' parcelas. Confira e toque em Salvar.');
+    },
+    salvarCompra: () => {
+      const f = st.folha, x = st.m.compras.find((c) => c._i === f.i);
+      if (!x) return;
+      const valor = numBR(f.valor), parcelas = f.mensal ? 'Mensal' : (parseInt(f.parcelas, 10) || 1), data = serieISO(f.data);
+      if (!f.desc.trim() || !f.cat || !String(f.valor).trim() || !f.data) { avisar('Preencha descrição, data, valor e categoria.'); return; }
+      const mud = {};
+      if (f.desc.trim() !== String(x['Descrição'] || '').trim()) mud['Descrição'] = f.desc.trim();
+      if (data !== Math.floor(Number(x.Data) || 0)) mud.Data = data;
+      if (Math.round(valor * 100) !== Math.round((Number(x['Valor parcela']) || 0) * 100)) mud['Valor parcela'] = valor;
+      if (String(parcelas) !== String(x.Parcelas)) mud.Parcelas = parcelas;
+      if (f.cat !== x.Categoria) mud.Categoria = f.cat;
+      if (!Object.keys(mud).length) { st.folha = null; avisar('Nada mudou.'); return; }
+      st.folha = null;
+      gravar(() => Dados.alterar('tbCartao', x._i, mud), 'Compra corrigida.');
+    },
     parc: (d) => { st.lanc.mensal = false; st.lanc.parcelas = Math.max(1, Math.min(48, st.lanc.parcelas + Number(d.d))); desenhar(); },
     salvarLanc: () => {
       const l = st.lanc, valor = numBR(l.valor);
       if (!valor) { avisar('Informe o valor.'); return; }
       if (!l.desc.trim()) { avisar('Informe a descrição.'); return; }
       if (!l.cat && !(l.forma === 'pix' && l.tipo === 'Pagamento fatura')) { avisar('Escolha a categoria.'); return; }
-      const limpar = () => { st.lanc = { ...st.lanc, valor: '', desc: '', comp: '', parcelas: 1, mensal: false }; st.aba = 'inicio'; };
+      const limpar = () => { st.lanc = { ...st.lanc, valor: '', desc: '', comp: '', parcelas: 1, mensal: false, modoValor: 'total' }; st.aba = 'inicio'; };
       if (l.forma === 'cartao') {
-        const linha = { Data: serieISO(l.data), 'Descrição': l.desc.trim(), 'Cartão': l.cartao, 'Valor parcela': valor,
+        const linha = { Data: serieISO(l.data), 'Descrição': l.desc.trim(), 'Cartão': l.cartao, 'Valor parcela': valorParcela(l),
           Parcelas: l.mensal ? 'Mensal' : l.parcelas, Categoria: l.cat, Envelope: '', 'Ajuste 1ª fatura': '' };
         gravar(() => Dados.adicionar('tbCartao', linha), 'Compra salva no Cartão.', null).then((ok) => { if (ok) { limpar(); desenhar(); } });
       } else {

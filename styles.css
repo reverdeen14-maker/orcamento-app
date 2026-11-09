@@ -237,3 +237,7 @@ button { cursor: pointer; }
 
 /* As caixas da tela nunca encolhem: a tela é que rola (antes a aba Mais cortava o conteúdo das seções). */
 .rolagem > * { flex-shrink: 0; }
+
+/* Lançar compra parcelada: escolher se o valor digitado é o total ou a parcela */
+.bloco.centro .seg { width: 100%; }
+.resumo-parc { font-size: 14px; color: var(--azul); background: #EAF0FF; border-radius: 10px; padding: 6px 12px; }
