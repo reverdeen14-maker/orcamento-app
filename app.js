@@ -252,7 +252,7 @@
       const cab = d !== ultimoDia ? '<div class="ext-dia">' + nomeDia(d) + '</div>' : '';
       ultimoDia = d;
       const sub = [x.Tipo === 'Pagamento fatura' ? 'Fatura' : x.Tipo, x['Categoria final'] || x.Compromisso].filter(Boolean).join(' · ');
-      return cab + '<div class="ext-item"><span class="ext-ic ' + (mov > 0 ? 'ent' : mov < 0 ? 'sai' : '') + '" aria-hidden="true">' + (mov > 0 ? '↓' : '↑') + '</span>'
+      return cab + '<div class="ext-item" data-segura="' + x._i + '"><span class="ext-ic' + (mov > 0 ? 'ent' : mov < 0 ? 'sai' : '') + '" aria-hidden="true">' + (mov > 0 ? '↓' : '↑') + '</span>'
         + '<span class="cresce col"><span>' + esc(x['Descrição']) + '</span><span class="cinza pp">' + esc(sub) + '</span></span>'
         + '<span class="col dir"><b class="' + (mov > 0 ? 'verde' : '') + '">' + (mov > 0 ? '+ ' : mov < 0 ? '− ' : '') + brl(Math.abs(mov)) + '</b>'
         + (typeof x.Saldo === 'number' ? '<span class="cinza pp">saldo ' + brl(x.Saldo) + '</span>' : '') + '</span></div>';
@@ -261,6 +261,7 @@
       + '<button class="redondo" data-a="fechar" aria-label="Fechar extrato">×</button></div>'
       + '<div class="duas-cards ext-res"><div class="card"><span class="cinza pp">Entrou em ' + MESES[mesDaSerie(m.mesRef).mes] + '</span><b class="verde">+ ' + brl(ent) + '</b></div>'
       + '<div class="card"><span class="cinza pp">Saiu em ' + MESES[mesDaSerie(m.mesRef).mes] + '</span><b>− ' + brl(sai) + '</b></div></div>'
+      + '<p class="dica">Segure o dedo num lançamento para apagar.</p>'
       + '<div class="chips ext-filtros">' + Object.keys(FILTROS_EXT).map((k) => '<button class="chip ' + (k === f.filtro ? 'on' : '') + '" data-a="extFiltro" data-v="' + k + '">' + k + '</button>').join('') + '</div>'
       + '<div class="extrato-lista">' + (itens || '<p class="dica">Nenhum lançamento aqui.</p>') + '</div>'
       + (lista.length > f.n ? '<div class="botoes"><button class="btn sec" data-a="extMais">Ver mais antigos (' + (lista.length - f.n) + ')</button></div>' : '');
@@ -608,6 +609,16 @@
         + '<div class="botoes"><button class="btn perigo" data-a="confirmarDesfazer">Apagar lançamento</button><button class="btn sec" data-a="fechar">Cancelar</button></div>';
     } else if (f.tipo === 'extrato') {
       corpo = folhaExtrato(f);
+    } else if (f.tipo === 'apagarLanc') {
+      const x = f.linha, mov = Number(x.Movimento) || 0;
+      const env = x['Envelope final'] ? 'O envelope ' + x['Envelope final'] + ' volta a ter esse valor disponível.' : '';
+      corpo = '<h2>Apagar este lançamento?</h2>'
+        + '<div class="ext-item sel"><span class="ext-ic ' + (mov > 0 ? 'ent' : 'sai') + '" aria-hidden="true">' + (mov > 0 ? '↓' : '↑') + '</span>'
+        + '<span class="cresce col"><span>' + esc(x['Descrição']) + '</span><span class="cinza pp">' + dm(Math.floor(x.Data)) + ' · ' + esc(x.Tipo) + (x['Categoria final'] ? ' · ' + esc(x['Categoria final']) : '') + '</span></span>'
+        + '<b>' + (mov > 0 ? '+ ' : '− ') + brl(Math.abs(mov)) + '</b></div>'
+        + '<p class="dica">Ele sai do Fluxo da planilha. ' + (mov < 0 ? 'O saldo da conta volta a ter ' + rs(-mov) + '. ' : mov > 0 ? 'O saldo da conta diminui ' + rs(mov) + '. ' : '') + env
+        + (x.Compromisso ? ' O compromisso "' + esc(x.Compromisso) + '" volta a ficar pendente.' : '') + '</p>'
+        + '<div class="botoes"><button class="btn perigo" data-a="confirmarApagarLanc">Apagar lançamento</button><button class="btn sec" data-a="voltarExtrato">Cancelar</button></div>';
     } else if (f.tipo === 'editCompra') {
       const np = f.mensal ? 1 : Math.max(1, parseInt(f.parcelas, 10) || 1);
       corpo = '<h2>Compra no cartão ' + esc(f.cartao) + '</h2>'
@@ -795,6 +806,14 @@
     extrato: () => { st.folha = { tipo: 'extrato', filtro: 'Tudo', n: 40 }; desenhar(); },
     extFiltro: (d) => { st.folha.filtro = d.v; st.folha.n = 40; desenhar(); },
     extMais: () => { st.folha.n += 40; desenhar(); },
+    voltarExtrato: () => { const f = st.folha; st.folha = { tipo: 'extrato', filtro: f.filtro || 'Tudo', n: f.n || 40 }; desenhar(); },
+    confirmarApagarLanc: () => {
+      const f = st.folha, x = f.linha;
+      st.folha = null;
+      gravar(() => Dados.apagar('tbFluxo', x._i), 'Lançamento apagado: ' + x['Descrição'] + '.').then((ok) => {
+        if (ok) { st.folha = { tipo: 'extrato', filtro: f.filtro || 'Tudo', n: f.n || 40 }; desenhar(); }
+      });
+    },
     abrirConta: (d) => { st.folha = { tipo: 'conta', i: Number(d.i), modo: 'saldo', valor: '', desc: '' }; desenhar(); },
     modoConta: (d) => { st.folha.modo = d.v; desenhar(); },
     salvarConta: () => {
@@ -1057,7 +1076,35 @@
       st.of.itens = st.of.itens.filter((t) => !t.sel); desenhar();
     }
   };
+  // ---------- segurar o dedo (0,6 s) num lançamento do extrato = opção de apagar ----------
+  const segura = { t: null, x: 0, y: 0, el: null, disparou: false };
+  const soltar = () => { clearTimeout(segura.t); segura.t = null; if (segura.el) segura.el.classList.remove('segurando'); segura.el = null; };
+  $app.addEventListener('pointerdown', (e) => {
+    segura.disparou = false; // um toque novo sempre vale
+    const el = e.target.closest('[data-segura]');
+    if (!el || !st.folha || st.folha.tipo !== 'extrato') return;
+    soltar(); segura.disparou = false; segura.x = e.clientX; segura.y = e.clientY; segura.el = el;
+    el.classList.add('segurando');
+    segura.t = setTimeout(() => {
+      const i = Number(el.dataset.segura), linha = (st.m.fluxo || []).find((x) => x._i === i);
+      soltar();
+      if (!linha) return;
+      segura.disparou = true;
+      if (navigator.vibrate) navigator.vibrate(15);
+      const f = st.folha;
+      st.folha = { tipo: 'apagarLanc', linha, filtro: f.filtro, n: f.n };
+      desenhar();
+    }, 600);
+  });
+  $app.addEventListener('pointermove', (e) => { if (segura.t && Math.hypot(e.clientX - segura.x, e.clientY - segura.y) > 10) soltar(); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => $app.addEventListener(ev, () => {
+    if (segura.t) soltar();
+    if (segura.disparou) setTimeout(() => { segura.disparou = false; }, 400); // só ignora o clique do próprio "soltar"
+  }));
+  $app.addEventListener('contextmenu', (e) => { if (e.target.closest('[data-segura]')) e.preventDefault(); });
+
   $app.addEventListener('click', (e) => {
+    if (segura.disparou) { segura.disparou = false; e.preventDefault(); return; } // o "soltar" do dedo depois de segurar não vale como toque
     const b = e.target.closest('[data-a]');
     if (!b || b.disabled) return;
     const fn = acoes[b.dataset.a];

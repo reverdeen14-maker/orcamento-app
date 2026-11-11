@@ -270,3 +270,8 @@ button { cursor: pointer; }
 .neg-res { background: linear-gradient(140deg, #0F766E, #115E59); color: #fff; border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 2px; }
 .neg-res span { font-size: 13px; opacity: .9; }
 .neg-res b { font-size: 24px; font-weight: 800; }
+
+/* Segurar o dedo num lançamento do extrato para apagar */
+.ext-item[data-segura] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; border-radius: 10px; transition: background .5s ease; }
+.ext-item.segurando { background: #FDECEA; }
+.ext-item.sel { background: #F7F7FA; border-radius: 12px; padding: 10px; border-top: 0; margin: 4px 0; }
