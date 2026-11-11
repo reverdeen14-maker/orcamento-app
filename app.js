@@ -87,6 +87,22 @@
   }
   const nomeMes = (s) => { const x = mesDaSerie(s); return MESES[x.mes][0].toUpperCase() + MESES[x.mes].slice(1) + ' ' + x.ano; };
 
+  // As duas sobras do mês de referência (linhas 26, 10 e 27 do Orçamento):
+  // sobra do mês = receitas − aplicação − despesas · com o mês anterior = o que veio do mês anterior + a sobra do mês
+  function cartoesSobra(m) {
+    const o = m.orcamento, ref = mesDaSerie(m.mesRef);
+    const k = o.meses.findIndex((s) => typeof s === 'number' && mesDaSerie(s).mes === ref.mes);
+    if (k < 0) return '';
+    const sobra = o.sobra[k], veio = o.anterior[k], total = o.liquido[k];
+    const cor = (v) => (v < 0 ? 'vermelho' : 'verde');
+    const mesAnt = MESES[(ref.mes + 11) % 12];
+    return '<div class="duas-cards sobras">'
+      + '<button class="card link" data-a="aba" data-v="orcamento"><span class="cinza p">Sobra do mês</span><b class="m ' + cor(sobra) + '">' + rs(sobra) + '</b>'
+      + '<span class="cinza pp">só ' + MESES[ref.mes] + ': receitas − despesas − aplicação</span></button>'
+      + '<button class="card link destaque-sobra" data-a="aba" data-v="orcamento"><span class="cinza p">Sobra com o mês anterior</span><b class="m ' + cor(total) + '">' + rs(total) + '</b>'
+      + '<span class="cinza pp">' + (veio < 0 ? 'faltou ' : 'veio ') + rs(Math.abs(veio)) + ' de ' + mesAnt + '</span></button></div>';
+  }
+
   function telaInicio() {
     const m = st.m, p = m.painel;
     const prox = m.pagar.filter((x) => x.status !== 'Pago').slice(0, 6);
@@ -108,9 +124,9 @@
       + '<span class="rot">' + esc(p.txtSaldo) + '</span><div class="duas">'
       + '<div><span>Caixinha</span><b>' + rs(p.caixinha) + '</b></div><div><span>Faturas do mês</span><b>' + rs(p.faturas) + '</b></div></div></section>'
       + secaoContas()
-      + '<div class="grade3"><div class="card"><span class="cinza p">Receitas</span><b class="verde">' + brl(p.receitas) + '</b></div>'
-      + '<div class="card"><span class="cinza p">Despesas</span><b class="vermelho">' + brl(p.despesas) + '</b></div>'
-      + '<div class="card"><span class="cinza p">Sobra</span><b>' + brl(p.sobra) + '</b><span class="cinza pp">' + esc(p.txtSobra) + '</span></div></div>'
+      + '<div class="duas-cards"><div class="card"><span class="cinza p">Receitas</span><b class="verde m">' + brl(p.receitas) + '</b></div>'
+      + '<div class="card"><span class="cinza p">Despesas</span><b class="vermelho m">' + brl(p.despesas) + '</b></div></div>'
+      + cartoesSobra(m)
       + '<div class="duas-cards"><button class="card link" data-a="aba" data-v="contas"><span class="cinza p">A pagar no mês</span><b class="m">' + rs(p.aPagar) + '</b><span class="cinza pp">' + esc(p.txtAPagar) + '</span></button>'
       + '<button class="card link" data-a="aba" data-v="contas" data-s="receber"><span class="cinza p">Falta receber</span><b class="m">' + rs(p.faltaReceber) + '</b><span class="cinza pp">' + esc(p.txtReceber) + '</span></button></div>'
       + '<section class="bloco"><div class="lin"><h2>Envelopes</h2><span class="cinza">restam ' + rs(restam) + '</span></div>' + env + '</section>'

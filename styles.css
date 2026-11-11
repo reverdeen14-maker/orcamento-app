@@ -275,3 +275,7 @@ button { cursor: pointer; }
 .ext-item[data-segura] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; border-radius: 10px; transition: background .5s ease; }
 .ext-item.segurando { background: #FDECEA; }
 .ext-item.sel { background: #F7F7FA; border-radius: 12px; padding: 10px; border-top: 0; margin: 4px 0; }
+
+/* Início: as duas sobras (do mês e com o saldo do mês anterior) */
+.sobras .card { gap: 3px; }
+.sobras .destaque-sobra { background: linear-gradient(140deg, #EEF2FF, #FFFFFF); border: 1px solid #C7D2FE; }
