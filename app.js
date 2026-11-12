@@ -62,7 +62,27 @@
     desenhar();
   }
 
+  // Traduz os erros mais comuns da Microsoft para algo que dê para agir
+  function erroAmigavel(msg) {
+    const m = String(msg || '');
+    if (/FileOpenUserUnauthorized|InvalidAuthenticationToken|interaction_required|login_required|Erro 401/i.test(m))
+      return 'A Microsoft pediu para você entrar de novo na conta.';
+    if (/Failed to fetch|NetworkError|Load failed/i.test(m)) return 'Sem internet agora.';
+    if (/Erro 5\d\d|Erro 429|timeout/i.test(m)) return 'A Microsoft está demorando ou fora do ar. Tente de novo daqui a pouco.';
+    return m.slice(0, 160);
+  }
+  function faixaErro() {
+    if (!st.erro || Dados.modo !== 'onedrive') return '';
+    const quando = st.atualizadoEm ? ' (de ' + st.atualizadoEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + ')' : '';
+    return '<div class="faixa-erro"><b>⚠️ Não consegui ler a planilha agora.</b><span>' + esc(erroAmigavel(st.erro)) + ' Você está vendo os dados da última leitura' + quando + ' e nada pode ser gravado até voltar.</span>'
+      + '<div class="botoes"><button class="btn sec" data-a="atualizar">Tentar de novo</button><button class="btn" data-a="reentrar">Entrar de novo na conta</button></div></div>';
+  }
+
   async function gravar(fn, okMsg, patchDemo) {
+    if (!Dados.temDados()) {
+      avisar('Não dá para gravar agora: ' + erroAmigavel(st.erro || 'a planilha não foi lida.') + ' Toque em ↻ ou entre de novo na conta.');
+      return false;
+    }
     st.carregando = true; desenhar();
     try {
       await fn();
@@ -721,7 +741,7 @@
       html = telaAbertura(false);
     } else {
       const t = { inicio: telaInicio, contas: telaContas, lancar: telaLancar, cartoes: telaCartoes, orcamento: telaOrcamento, mais: telaMais }[st.aba]();
-      html = '<main class="rolagem' + (st.abertura === 'saindo' ? ' entra' : '') + '">' + t + '</main>' + (st.aba === 'lancar' ? '' : navegacao()) + folha();
+      html = '<main class="rolagem' + (st.abertura === 'saindo' ? ' entra' : '') + '">' + faixaErro() + t + '</main>' + (st.aba === 'lancar' ? '' : navegacao()) + folha();
     }
     // na saída, a mesma abertura que estava na tela esmaece por cima das telas (sem recomeçar a animação)
     const velha = st.abertura === 'saindo' ? $app.querySelector('.abertura') : null;
@@ -943,6 +963,7 @@
     },
     ano: (d) => { Dados.trocarAno(d.v); st.m = null; st.orcMes = null; st.fat.idx = null; recarregar(); },
     entrar: () => { Dados.usarDemo(false); Dados.entrar(); },
+    reentrar: () => { Dados.usarDemo(false); Dados.entrar(); },
     sair: () => Dados.sair(),
     demo: () => { Dados.usarDemo(Dados.modo !== 'demo'); location.reload(); },
     ativo: (d) => gravar(() => Dados.alterar('tbContas', Number(d.i), { Ativo: d.v }), d.v === 'Sim' ? 'Conta ativada.' : 'Conta desativada.'),

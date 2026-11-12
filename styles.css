@@ -279,3 +279,7 @@ button { cursor: pointer; }
 /* Início: as duas sobras (do mês e com o saldo do mês anterior) */
 .sobras .card { gap: 3px; }
 .sobras .destaque-sobra { background: linear-gradient(140deg, #EEF2FF, #FFFFFF); border: 1px solid #C7D2FE; }
+
+/* Aviso quando a planilha não pôde ser lida (dados da última leitura, sem gravar) */
+.faixa-erro { background: #FFF7ED; border: 1px solid #FDBA74; color: #7C2D12; border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.faixa-erro .botoes { margin-top: 6px; }

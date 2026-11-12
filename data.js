@@ -8,7 +8,7 @@ const Dados = (() => {
   const TABELAS = ['tbFluxo', 'tbCartao', 'tbContas', 'tbAvulsos', 'tbAjustes', 'tbCategorias', 'tbCartoes', 'tbEnvelopes', 'tbTipos',
     'tbContasBanco', 'tbMovContas'];
 
-  let cliente = null, conta = null, sessao = null, itemId = null, raw = null, modo = 'demo';
+  let cliente = null, conta = null, sessao = null, itemId = null, raw = null, modo = 'demo', leituraFalhou = false;
   const calcCache = {};
 
   // ---------- datas (número de série do Excel) ----------
@@ -177,6 +177,7 @@ const Dados = (() => {
       }
       return montarModelo(raw);
     }
+    leituraFalhou = true;   // só volta a false se a leitura inteira der certo
     if (!sessao) await abrirSessao();
     let rs, ts;
     try {
@@ -190,6 +191,7 @@ const Dados = (() => {
     raw = { ranges: {}, tables: {} };
     RANGES.forEach((a, i) => { raw.ranges[a] = rs[i]; });
     TABELAS.forEach((t, i) => { raw.tables[t] = ts[i]; });
+    leituraFalhou = false;
     try { localStorage.setItem('ultimoRaw', JSON.stringify(raw)); localStorage.setItem('ultimoRawEm', new Date().toISOString()); } catch (e) { /* cheio */ }
     return montarModelo(raw);
   }
@@ -380,7 +382,9 @@ const Dados = (() => {
 
   // token da conta Microsoft, para o servidor de lembretes conferir que é a conta dona das planilhas
   const tokenAtual = () => token();
+  // true só quando os dados vieram da planilha agora (não da cópia guardada no aparelho)
+  const temDados = () => modo === 'demo' || (raw !== null && !leituraFalhou);
 
-  return { iniciar, entrar, sair, carregar, ultimoSalvo, adicionar, alterar, limpar, apagar, mudarMes, trocarAno, usarDemo, tokenAtual, pegarAvisoMigracao,
+  return { iniciar, entrar, sair, carregar, ultimoSalvo, adicionar, alterar, limpar, apagar, mudarMes, trocarAno, usarDemo, tokenAtual, pegarAvisoMigracao, temDados,
     paraSerie, deSerie, planilha, get modo() { return modo; } };
 })();
