@@ -59,7 +59,15 @@ const Dados = (() => {
     return r.status === 204 ? null : r.json();
   }
 
-  const planilha = () => cfg.planilhas.find((p) => String(p.ano) === localStorage.getItem('ano')) || cfg.planilhas[0];
+  // Ano aberto: o escolhido em Mais (vale até o fim do ano em que foi escolhido); senão, o ano de hoje.
+  // Assim, em 1º de janeiro o app passa sozinho para a planilha do ano novo.
+  const planilha = () => {
+    const hojeAno = new Date().getFullYear();
+    const escolhido = localStorage.getItem('ano'), em = Number(localStorage.getItem('anoEm'));
+    const porAno = (a) => cfg.planilhas.find((p) => String(p.ano) === String(a));
+    if (escolhido && em === hojeAno && porAno(escolhido)) return porAno(escolhido);
+    return porAno(hojeAno) || cfg.planilhas[cfg.planilhas.length - 1];
+  };
   const wb = () => '/me/drive/items/' + itemId + '/workbook';
   const folha = (s) => "/worksheets('" + encodeURIComponent(s) + "')";
 
@@ -192,11 +200,11 @@ const Dados = (() => {
     RANGES.forEach((a, i) => { raw.ranges[a] = rs[i]; });
     TABELAS.forEach((t, i) => { raw.tables[t] = ts[i]; });
     leituraFalhou = false;
-    try { localStorage.setItem('ultimoRaw', JSON.stringify(raw)); localStorage.setItem('ultimoRawEm', new Date().toISOString()); } catch (e) { /* cheio */ }
+    try { localStorage.setItem('ultimoRaw-' + planilha().ano, JSON.stringify(raw)); localStorage.removeItem('ultimoRaw'); } catch (e) { /* cheio */ }
     return montarModelo(raw);
   }
   function ultimoSalvo() {
-    try { const r = JSON.parse(localStorage.getItem('ultimoRaw')); return r ? montarModelo(r) : null; } catch (e) { return null; }
+    try { const r = JSON.parse(localStorage.getItem('ultimoRaw-' + planilha().ano)); return r ? montarModelo(r) : null; } catch (e) { return null; }
   }
 
   // ---------- gravar ----------
@@ -319,7 +327,10 @@ const Dados = (() => {
     return true;
   }
 
-  function trocarAno(ano) { localStorage.setItem('ano', String(ano)); itemId = null; sessao = null; raw = null; }
+  function trocarAno(ano) {
+    localStorage.setItem('ano', String(ano)); localStorage.setItem('anoEm', String(new Date().getFullYear()));
+    itemId = null; sessao = null; raw = null;
+  }
   function usarDemo(sim) { localStorage.setItem('modoDemo', sim ? '1' : '0'); }
 
   // ---------- modelo para as telas ----------
